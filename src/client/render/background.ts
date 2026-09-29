@@ -428,29 +428,43 @@ export class AzureBackground {
     }
   }
 
+  private worldCloudX(c: Cloud, time: number): number {
+    const span = this.map.width + 1600;
+    return ((((c.x + time * WIND) + 800) % span) + span) % span - 800;
+  }
+
   /**
-   * World-depth clouds (parallax 1): drawn before aircraft so planes fly in
-   * front of them, with soft shadows cast onto the sea.
+   * World-depth clouds (parallax 1). Call inside the camera transform before
+   * drawWorld(): hills then sit in front of them and aircraft fly in front.
    */
   drawWorldClouds(ctx: CanvasRenderingContext2D, cam: Camera, time: number): void {
     const warm = this.pal.warm;
-    const sea = this.terrain.seaLevel;
-    const span = this.map.width + 1600;
     for (const c of this.worldClouds) {
-      const x = ((((c.x + time * WIND) + 800) % span) + span) % span - 800;
+      const x = this.worldCloudX(c, time);
       const w = c.sprite.width * c.scale;
       const h = c.sprite.height * c.scale;
       if (x + w < cam.left - 100 || x > cam.right + 100) continue;
-      // Shadow on the sea directly below.
-      if (sea > cam.top && sea < cam.bottom + 60) {
-        ctx.globalAlpha = 0.12 * c.alpha;
-        ctx.fillStyle = '#0a2a44';
-        ctx.beginPath();
-        ctx.ellipse(x + w / 2, sea + 6, w * 0.4, 7, 0, 0, Math.PI * 2);
-        ctx.fill();
-      }
       if (c.y + h < cam.top || c.y - h > cam.bottom) continue;
       this.blitCloud(ctx, c, x, c.y - h * 0.7, w, h, c.alpha, warm);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /** Soft shadows the world clouds cast on the sea. Call after drawWorld(). */
+  drawCloudShadows(ctx: CanvasRenderingContext2D, cam: Camera, time: number): void {
+    const sea = this.terrain.seaLevel;
+    if (sea < cam.top || sea > cam.bottom + 60) return;
+    ctx.fillStyle = '#0a2a44';
+    for (const c of this.worldClouds) {
+      const x = this.worldCloudX(c, time);
+      const w = c.sprite.width * c.scale;
+      if (x + w < cam.left - 100 || x > cam.right + 100) continue;
+      const cx = x + w / 2;
+      if (this.terrain.groundY(Math.max(0, Math.min(this.map.width, cx))) < sea - 30) continue; // over land
+      ctx.globalAlpha = 0.12 * c.alpha;
+      ctx.beginPath();
+      ctx.ellipse(cx, sea + 6, w * 0.4, 7, 0, 0, Math.PI * 2);
+      ctx.fill();
     }
     ctx.globalAlpha = 1;
   }

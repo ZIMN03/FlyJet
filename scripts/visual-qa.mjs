@@ -81,6 +81,16 @@ try {
   });
   await wait(2200);
   await page.screenshot({ path: `${OUT}/vqa-level-complete.png` });
+  // Stress: level 12 (12 aircraft with missiles) plus a second wave arriving.
+  await jump(12, 0);
+  await wait(6000);
+  const perf = await page.evaluate(() => new Promise((r) => {
+    const g = window.aerovant; const times = []; let last = performance.now(); const t0 = last;
+    const f = () => { const now = performance.now(); times.push(now - last); last = now; if (now - t0 > 3000) { times.sort((a, b) => a - b); r({ fps: times.length / 3, p95: times[Math.floor(times.length * 0.95)], sim: g.debug?.frameMs, aircraft: g.session.world.aircraft.filter((a) => a.alive).length, particles: g.renderer.particles.count, missiles: g.session.world.missiles.filter((m) => m.active).length }); } else requestAnimationFrame(f); };
+    requestAnimationFrame(f);
+  }));
+  console.log('stress', JSON.stringify(perf));
+  await page.screenshot({ path: `${OUT}/vqa-stress.png` });
 } finally {
   console.log(errors.length ? 'ERRORS:\n' + errors.join('\n') : 'no errors');
   await browser.close();

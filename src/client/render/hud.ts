@@ -405,6 +405,9 @@ export class Hud {
     const me = v.local;
     if (!me || !me.alive) return;
     const margin = 34 * u;
+    // Collect edge markers, nearest first; ones that would overlap merge into a
+    // single arrow showing the closest range and how many bandits it stands for.
+    const marks: { ex: number; ey: number; tx: number; ty: number; ang: number; d: number; n: number }[] = [];
     for (const a of v.world.aircraft) {
       if (!a.alive || a === me || a.team === me.team) continue;
       const d = Math.hypot(a.x - me.x, a.y - me.y);
@@ -419,21 +422,31 @@ export class Hud {
       const tx = Math.cos(ang);
       const ty = Math.sin(ang);
       const k = Math.min(Math.abs((W / 2 - margin) / (tx || 1e-6)), Math.abs((H / 2 - margin) / (ty || 1e-6)));
-      const ex = cx + tx * k;
-      const ey = cy + ty * k;
+      marks.push({ ex: cx + tx * k, ey: cy + ty * k, tx, ty, ang, d, n: 1 });
+    }
+    marks.sort((p, q) => p.d - q.d);
+    const kept: typeof marks = [];
+    const minSep = 30 * u;
+    for (const m of marks) {
+      const near = kept.find((k) => Math.hypot(k.ex - m.ex, k.ey - m.ey) < minSep);
+      if (near) near.n++;
+      else kept.push(m);
+    }
+    ctx.textAlign = 'center';
+    ctx.font = this.font(11 * u);
+    for (const m of kept) {
       ctx.save();
-      ctx.translate(ex, ey);
-      ctx.rotate(ang);
+      ctx.translate(m.ex, m.ey);
+      ctx.rotate(m.ang);
       ctx.fillStyle = COL.enemy;
       ctx.beginPath();
       ctx.moveTo(14 * u, 0); ctx.lineTo(-4 * u, -9 * u); ctx.lineTo(0, 0); ctx.lineTo(-4 * u, 9 * u);
       ctx.closePath();
       ctx.fill();
       ctx.restore();
-      ctx.font = this.font(11 * u);
-      ctx.textAlign = 'center';
       ctx.fillStyle = COL.text;
-      ctx.fillText(`${Math.round(d / 10) * 10}`, ex - tx * 24 * u, ey - ty * 24 * u);
+      const label = `${Math.round(m.d / 10) * 10}${m.n > 1 ? ` ×${m.n}` : ''}`;
+      ctx.fillText(label, m.ex - m.tx * (m.n > 1 ? 32 : 24) * u, m.ey - m.ty * 24 * u);
     }
   }
 

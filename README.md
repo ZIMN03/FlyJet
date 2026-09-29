@@ -19,6 +19,8 @@ npm run dev        # http://localhost:5173
 | `npm run build`    | Type-check + production build into `dist/`                      |
 | `npm test`         | Simulation unit tests, missile balance and AI soak tests         |
 | `npm run smoke`    | Headless-Chromium end-to-end playthrough with screenshots       |
+| `node scripts/visual-qa.mjs` | Screenshots of every sky palette, both bosses and a boss kill |
+| `npm run build:site` | Single-file build for GitHub Pages (`site/index.html`)         |
 | `npm run typecheck`| TypeScript only                                                  |
 
 ## Controls
@@ -48,33 +50,54 @@ if it hasn't hit by then it pops harmlessly and disappears. Flares (`F` or the o
 **FLARES** button) pull a chasing missile onto the decoys. These rules are covered by
 `tests/missile-balance.test.ts`.
 
-**Levels and unlocks:** in Endless Skies, level 1 sends one opponent, level 2 sends two,
-and so on. Early opponents are fragile trainees that can't fire missiles; toughness, aim,
-speed and tactics ramp up until level 10 (see `levelDifficulty()` in
-`src/sim/modes/waves.ts`). Reaching a level unlocks aircraft: Swift (3), Titan (5),
-Phantom (7), Nova (10). Every plane can be inspected in the Hangar, locked or not.
+**Cannons** heat up while firing. Let the gauge run to OVERHEATED and they lock until it
+cools to 35%. **Collisions** between aircraft are swept (no tunnelling at any frame
+rate). They damage both jets, bounce them apart and give a short immunity so a single
+scrape never hits twice.
+
+**Levels:** each level of Endless Skies is a short sortie. First comes a wave of N
+opponents (N = the level number), then a second wave of N+1, then a boss. The first
+levels are gentle: fragile trainee pilots with no missiles, and the level-1 boss (the
+Warden) fights with guns only. Toughness, aim, speed, tactics and the enemy mix (light
+fighters, heavy fighters, interceptors, missile carriers) ramp up until level 10 (see
+`levelDifficulty()` in `src/sim/modes/waves.ts`). Every third level ends with the
+**Stormbreaker**. It has four phases, shields on phase changes, missile salvos, escort
+drones and a critical final phase. Clearing a stage patches your hull and restocks
+missiles; hostile missiles still in the air self-destruct. A new level fully repairs you.
+The sky moves through five times of day as you progress.
+
+**Rewards and the hangar:** kills (gun, missile or ramming), assists, missile hits,
+missiles evaded, waves cleared, bosses defeated, levels completed and time survived all
+earn score, XP and credits. The results screen itemises them. Credits buy per-aircraft
+upgrades (engine, airframe, cannons, missile rack, afterburner; three tiers each) and
+paint schemes. Everything is saved locally. Reaching a level unlocks aircraft: Swift (3),
+Titan (5), Phantom (7), Nova (10). Every plane can be inspected in the Hangar, locked or
+not. The Hangar shows SPEED, TURN, ARMOR, WEAPONS, BOOST and MISSILES including owned
+upgrades.
 
 ## Architecture
 
 ```
 src/
   sim/            Pure TypeScript simulation. No DOM, no rendering, no timers.
-    config/       Data-driven aircraft, weapons, abilities, maps
-    systems/      flight, boundary, weapons (+lock-on), projectiles, damage, spawn
-    ai/           Personality presets + finite-state AI brain
-    modes/        GameMode interface, WaveMode (Endless Skies), AttractMode
+    config/       Data-driven aircraft, weapons, abilities, upgrades, maps, flight tuning
+    systems/      flight, collision, boundary, weapons (+lock-on, heat), projectiles, damage, spawn
+    ai/           Personality presets, dogfighting FSM brain, multi-phase boss brain
+    modes/        GameMode interface, WaveMode (Endless Skies levels), AttractMode
     step.ts       stepWorld(): one fixed 60 Hz tick
     world.ts      World state + pooled bullets/missiles/flares
   client/
     session.ts    MatchSession interface (offline impl now, online impl later)
-    game.ts       App state machine, main loop, rewards, error recovery
+    game.ts       App state machine, main loop, error recovery
+    rewards.ts    Itemised XP/credit ledger built from sim events
     input/        Action/binding abstraction, keyboard + gamepad → InputCommand
     render/       Camera, parallax background, aircraft art, particles, FX, HUD
     audio/        Web Audio synth SFX + layered procedural music
     ui/           DOM menus (title, main, play, hangar, profile, settings, results)
     save/         Validated, corruption-tolerant localStorage persistence
-tests/            Vitest suites (flight, combat, missile balance, match soak)
-scripts/          Browser smoke test
+tests/            Vitest suites (flight, 360° turning at 30–144 fps, collisions, combat,
+                  missile balance, levels/bosses, upgrades, match soak)
+scripts/          Browser smoke test, visual QA, single-file site build
 ```
 
 ### Why it is built this way (multiplayer readiness)
@@ -93,7 +116,7 @@ scripts/          Browser smoke test
   reconcile the local aircraft, and interpolate remote ones. Menus, HUD, FX and audio
   won't need to change.
 - **Server-owned progression later.** Offline XP and credits are computed locally in
-  `game.ts`. Online, the server will be the only source of rewards.
+  `rewards.ts`. Online, the server will be the only source of rewards.
 
 ## Debug tools
 
@@ -105,8 +128,9 @@ offline and mutate the local world.
 
 ## Roadmap
 
-1. ~~Architecture, flight, camera, guns, AI, missiles, damage, FX, HUD, waves, first map, offline loop~~ (this milestone)
+1. ~~Architecture, flight, camera, guns, AI, missiles, damage, FX, HUD, waves, first map, offline loop~~
+1b. ~~Level sequences, enemy archetypes, Warden and Stormbreaker bosses, upgrades, paints, reward ledger, sky palettes~~
 2. Authoritative Node server (`ws`) running `src/sim`, snapshot protocol, interpolation, prediction and reconciliation, and a local multi-client test harness with latency and packet-loss simulation
 3. Online Sky Duel (2–8 players), reconnect handling, matchmaking queue
 5. Maps: Tempest Zone, Iron Sky, Crimson Pass, Sunset Stratosphere
-6. Team Battle, zone control, campaign and the Stormbreaker boss
+6. Team Battle, zone control, campaign

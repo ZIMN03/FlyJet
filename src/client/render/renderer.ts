@@ -88,8 +88,9 @@ export class Renderer {
 
     ctx.save();
     cam.apply(ctx);
-    this.bg!.drawWorld(ctx, cam, time);
     this.bg!.drawWorldClouds(ctx, cam, time);
+    this.bg!.drawWorld(ctx, cam, time);
+    this.bg!.drawCloudShadows(ctx, cam, time);
     const l = cam.left - 100;
     const t = cam.top - 100;
     const r = cam.right + 100;
