@@ -4,6 +4,7 @@ import type { Aircraft } from '../../sim/types';
 import type { World } from '../../sim/world';
 import { PALETTES, drawAirframe, drawExhaust } from './aircraftArt';
 import { AzureBackground } from './background';
+import { paintPalette } from './paints';
 import { Camera } from './camera';
 import type { FxDirector } from './fx';
 import { Hud, type HudView } from './hud';
@@ -109,7 +110,8 @@ export class Renderer {
     }
     // Keep the canopy up: roll the airframe through inverted when the nose crosses vertical.
     vis.roll = approach(vis.roll, Math.cos(h) >= 0 ? 1 : -1, dt * ROLL_RATE);
-    const pal = a.team === TEAM_BLUE ? PALETTES.blue : PALETTES.orange;
+    const pal = a.team !== TEAM_BLUE ? PALETTES.orange
+      : a.isHuman && a.id === fx.localId ? paintPalette(fx.playerPaint) : PALETTES.blue;
     const hp = a.health / a.def.health;
 
     ctx.save();

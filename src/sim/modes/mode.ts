@@ -1,7 +1,8 @@
 import type { Aircraft } from '../types';
 import type { World } from '../world';
 
-export type MatchPhase = 'countdown' | 'playing' | 'intermission' | 'ending' | 'ended';
+export type MatchPhase =
+  | 'countdown' | 'playing' | 'intermission' | 'bossWarning' | 'levelComplete' | 'ending' | 'ended';
 
 /**
  * A game mode owns match flow: countdown, win/loss, respawns, waves, scoring

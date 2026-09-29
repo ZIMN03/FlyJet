@@ -31,6 +31,8 @@ export interface Personality {
   flankBias: number;
   /** Uses brake-turns to out-turn pursuers and missiles. */
   brakeTurns: boolean;
+  /** Stand-off fighter: opens the range instead of dogfighting up close. */
+  standoff?: boolean;
 }
 
 export const PERSONALITIES: Record<string, Personality> = {
@@ -40,6 +42,27 @@ export const PERSONALITIES: Record<string, Personality> = {
     engageRange: 1600, preferredRange: 700, minRange: 300,
     aimError: 0.3, reactionTime: 0.75, missileRate: 0, strategicMissiles: false,
     flareSkill: 0, evadeTendency: 0.08, retreatHealth: 0, boostUse: 0.1, flankBias: 0, brakeTurns: false,
+  },
+  /** Heavy fighter: slow, deliberate, keeps pressing the attack with sustained fire. */
+  heavy: {
+    id: 'heavy', label: 'Heavy',
+    engageRange: 2200, preferredRange: 600, minRange: 260,
+    aimError: 0.09, reactionTime: 0.4, missileRate: 0.35, strategicMissiles: false,
+    flareSkill: 0.5, evadeTendency: 0.1, retreatHealth: 0, boostUse: 0.2, flankBias: 0, brakeTurns: false,
+  },
+  /** Missile boat: hangs back at long range, locks and launches, runs from close combat. */
+  missileBoat: {
+    id: 'missileBoat', label: 'Lancer',
+    engageRange: 2600, preferredRange: 1200, minRange: 650,
+    aimError: 0.12, reactionTime: 0.35, missileRate: 1.2, strategicMissiles: false,
+    flareSkill: 0.6, evadeTendency: 0.5, retreatHealth: 0.3, boostUse: 0.7, flankBias: 0.3, brakeTurns: true, standoff: true,
+  },
+  /** Interceptor: very fast, very aggressive slashing attacks. */
+  interceptor: {
+    id: 'interceptor', label: 'Interceptor',
+    engageRange: 2800, preferredRange: 420, minRange: 230,
+    aimError: 0.1, reactionTime: 0.25, missileRate: 0.4, strategicMissiles: false,
+    flareSkill: 0.45, evadeTendency: 0.3, retreatHealth: 0, boostUse: 0.95, flankBias: 0.2, brakeTurns: false,
   },
   rookie: {
     id: 'rookie', label: 'Rookie',

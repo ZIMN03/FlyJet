@@ -103,7 +103,8 @@ export class DebugTools {
     if (me) out.push(`pos ${me.x.toFixed(0)},${me.y.toFixed(0)}  spd ${me.speed.toFixed(0)}  god ${me.godMode ? 'on' : 'off'}`);
     for (const [id, b] of w.brains) {
       const a = w.getAircraft(id);
-      if (a && a.alive) out.push(`${a.name.padEnd(14)} ${b.state.padEnd(13)} ${b.personality.label}`);
+      const label = 'personality' in b ? (b as { personality: { label: string } }).personality.label : 'Boss';
+      if (a && a.alive) out.push(`${a.name.padEnd(14)} ${b.state.padEnd(13)} ${label}`);
     }
     return out;
   }

@@ -9,6 +9,7 @@ import { SaveStore } from './save/save';
 import { AIRCRAFT, PLAYER_AIRCRAFT, isUnlocked } from '../sim/config/aircraft';
 import { AttractSession, WaveSession, type MatchSession } from './session';
 import { TutorialTracker } from './tutorial';
+import { RewardLedger } from './rewards';
 import { UI, type ResultsData, type UiAction } from './ui/ui';
 
 type AppState = 'menu' | 'match' | 'results';
@@ -46,6 +47,8 @@ export class Game {
   private flareBtnState = '';
   /** Aircraft unlocked during the current match (shown on the results screen). */
   private unlockedThisMatch: string[] = [];
+  /** Itemised XP/credit rewards for the current match. */
+  private ledger: RewardLedger | null = null;
 
   constructor(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     this.input = new InputManager(this.save.data.settings.bindings);
@@ -167,7 +170,11 @@ export class Game {
     const p = this.save.data.profile;
     // Fly the equipped aircraft if it is unlocked; otherwise fall back to the Viper.
     const aircraft = isUnlocked(p.favoriteAircraft, p.stats.bestWave) ? p.favoriteAircraft : 'viper';
-    this.session = new WaveSession({ aircraft, callsign: p.callsign, lives: PLAYER_LIVES });
+    this.session = new WaveSession({
+      aircraft, callsign: p.callsign, lives: PLAYER_LIVES, upgrades: p.upgrades[aircraft] ?? {},
+    });
+    this.fx.playerPaint = p.paint;
+    this.ledger = new RewardLedger(this.session.localId);
     this.unlockedThisMatch = [];
     this.fx.reset();
     this.fx.localId = this.session.localId;
@@ -223,12 +230,18 @@ export class Game {
     const wave = s.mode?.wave ?? 0;
     const prof = this.save.data.profile;
     const xpBefore = prof.xp;
-    // Offline rewards are computed locally; online they will come from the server.
-    const xpGained = Math.round(st.score * 0.4 + wave * 40 + st.kills * 10 + Math.min(this.matchTime, 900) * 0.5);
-    const creditsGained = Math.round(st.score / 12 + wave * 6);
+    // Itemised rewards from what actually happened (offline: computed locally;
+    // online: the server will compute the same ledger from its own events).
+    const survived = s.mode?.survivalTime ?? this.matchTime;
+    const ledger = this.ledger ?? new RewardLedger(me.id);
+    const rewardLines = ledger.lines(survived);
+    const { xp: xpGained, credits: creditsGained } = ledger.totals(survived);
     prof.xp += xpGained;
     prof.credits += creditsGained;
     const ps = prof.stats;
+    ps.missilesEvaded += ledger.missilesEvaded;
+    ps.bossesDefeated += ledger.bossesDefeated;
+    ps.levelsCompleted += ledger.levelsCompleted;
     const newBest = st.score > ps.bestScore;
     ps.matches++;
     ps.kills += st.kills;
@@ -259,6 +272,8 @@ export class Game {
       xpAfter: prof.xp,
       newBest,
       unlocked: this.unlockedThisMatch.slice(),
+      rewards: rewardLines,
+      creditsTotal: prof.credits,
     };
   }
 
@@ -303,7 +318,10 @@ export class Game {
 
     const sample = inMatch ? () => this.input.sampleCommand() : null;
     this.fx.soundEnabled = inMatch;
-    session.update(dt, sample, (events) => this.fx.handle(session.world, events));
+    session.update(dt, sample, (events) => {
+      this.fx.handle(session.world, events);
+      if (inMatch) this.ledger?.handle(session.world, events, session.mode?.wave ?? 1);
+    });
     if (!inMatch) this.fx.localId = session.localId;
     const paused = session.paused;
     const fdt = paused ? 0 : dt;

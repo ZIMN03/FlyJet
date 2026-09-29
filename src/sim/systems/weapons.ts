@@ -28,7 +28,8 @@ function gunFireRateMult(a: Aircraft): number {
 }
 
 function gunDamageMult(a: Aircraft): number {
-  return a.abilityTimer > 0 && a.ability.kind === 'overcharge' ? a.ability.damageMult ?? 1 : 1;
+  const upgrade = a.def.gunDamageMult ?? 1;
+  return upgrade * (a.abilityTimer > 0 && a.ability.kind === 'overcharge' ? a.ability.damageMult ?? 1 : 1);
 }
 
 /** Terrain line-of-sight between two points (sampled). Terrain is a counter to lock-ons. */
@@ -86,7 +87,7 @@ export function updateWeapons(world: World, a: Aircraft, cmd: InputCommand, dt: 
   if (firing) {
     const interval = a.gun.fireInterval / gunFireRateMult(a);
     // Overcharge vents heat: the cannons can't overheat while it is active.
-    const heatMult = a.abilityTimer > 0 && a.ability.kind === 'overcharge' ? 0 : 1;
+    const heatMult = a.abilityTimer > 0 && a.ability.kind === 'overcharge' ? 0 : a.def.gunHeatMult ?? 1;
     // Cap shots per tick to avoid bursts after a hitch.
     let shots = 0;
     while (a.gunCooldown <= 0 && shots < 3) {

@@ -6,6 +6,7 @@
  * NOTE: offline progression is client-side by nature. When online play lands,
  * XP/credits/unlocks become server-owned and this file only caches them.
  */
+import { MAX_UPGRADE_LEVEL, UPGRADES, type UpgradeLevels } from '../../sim/config/upgrades';
 
 export type Action =
   | 'up' | 'down' | 'left' | 'right'
@@ -53,6 +54,9 @@ export interface ProfileStats {
   bestScore: number;
   bestStreak: number;
   playTimeSec: number;
+  missilesEvaded: number;
+  bossesDefeated: number;
+  levelsCompleted: number;
 }
 
 export interface Profile {
@@ -62,6 +66,11 @@ export interface Profile {
   favoriteAircraft: string;
   tutorialDone: boolean;
   stats: ProfileStats;
+  /** Purchased upgrade levels per aircraft id. */
+  upgrades: Record<string, UpgradeLevels>;
+  /** Paint schemes owned, and the one applied. */
+  paints: string[];
+  paint: string;
 }
 
 export interface SaveData {
@@ -93,7 +102,13 @@ export function defaultSave(): SaveData {
       credits: 0,
       favoriteAircraft: 'viper',
       tutorialDone: false,
-      stats: { matches: 0, kills: 0, deaths: 0, assists: 0, bestWave: 0, bestScore: 0, bestStreak: 0, playTimeSec: 0 },
+      stats: {
+        matches: 0, kills: 0, deaths: 0, assists: 0, bestWave: 0, bestScore: 0, bestStreak: 0, playTimeSec: 0,
+        missilesEvaded: 0, bossesDefeated: 0, levelsCompleted: 0,
+      },
+      upgrades: {},
+      paints: ['standard'],
+      paint: 'standard',
     },
   };
 }
@@ -156,9 +171,35 @@ export function sanitizeSave(raw: unknown): SaveData {
         bestScore: num(ps.bestScore, 0, 0, 1e9),
         bestStreak: num(ps.bestStreak, 0, 0, 1e6),
         playTimeSec: num(ps.playTimeSec, 0, 0, 1e10),
+        missilesEvaded: num(ps.missilesEvaded, 0, 0, 1e9),
+        bossesDefeated: num(ps.bossesDefeated, 0, 0, 1e9),
+        levelsCompleted: num(ps.levelsCompleted, 0, 0, 1e9),
       },
+      upgrades: sanitizeUpgrades(p.upgrades),
+      paints: sanitizePaints(p.paints),
+      paint: str(p.paint, 'standard', 24),
     },
   };
+}
+
+function sanitizeUpgrades(v: unknown): Record<string, UpgradeLevels> {
+  const out: Record<string, UpgradeLevels> = {};
+  if (!isObj(v)) return out;
+  for (const [craft, levels] of Object.entries(v)) {
+    if (!isObj(levels) || craft.length > 24) continue;
+    const clean: UpgradeLevels = {};
+    for (const u of UPGRADES) {
+      const lv = levels[u.id];
+      if (typeof lv === 'number' && Number.isFinite(lv)) clean[u.id] = Math.max(0, Math.min(MAX_UPGRADE_LEVEL, Math.floor(lv)));
+    }
+    out[craft] = clean;
+  }
+  return out;
+}
+
+function sanitizePaints(v: unknown): string[] {
+  const list = Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && x.length <= 24).slice(0, 32) : [];
+  return list.includes('standard') ? list : ['standard', ...list];
 }
 
 export interface StorageLike {

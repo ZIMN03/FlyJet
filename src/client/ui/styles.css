@@ -195,3 +195,31 @@ input[type=text] { background: rgba(255,255,255,0.06); border: 1px solid var(--e
 @keyframes flare-pop { 0% { transform: scale(0.9); } 60% { transform: scale(1.08); } 100% { transform: scale(1); } }
 @media (prefers-reduced-motion: reduce) { .flare-btn, .flare-btn.pop { animation: none; transition: none; } }
 .flare-btn[hidden] { display: none; }
+
+/* ---------- Hangar tabs, upgrades, paint, rewards ---------- */
+.hangar-head { display: flex; justify-content: space-between; align-items: baseline; }
+.credits { font-size: 22px; font-weight: 800; color: var(--warn); font-variant-numeric: tabular-nums; }
+.credits span { font-size: 11px; letter-spacing: 0.18em; color: var(--dim); margin-left: 4px; }
+.hangar-desc { color: var(--dim); margin: 0 0 12px; font-size: 14px; }
+.upg { display: grid; grid-template-columns: 1fr auto 96px; gap: 14px; align-items: center; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.upg b { display: block; font-size: 14px; letter-spacing: 0.06em; }
+.upg span { font-size: 12px; color: var(--dim); }
+.pips { display: flex; gap: 5px; }
+.pips i { width: 18px; height: 6px; border-radius: 2px; background: rgba(255,255,255,0.12); }
+.pips i.on { background: var(--accent); box-shadow: 0 0 6px rgba(54,216,255,0.5); }
+button.buy { font: 800 12px var(--font); letter-spacing: 0.1em; padding: 8px 10px; border-radius: 6px; cursor: pointer;
+  background: rgba(54,216,255,0.14); color: var(--text); border: 1px solid var(--edge); transition: background 120ms, transform 90ms; outline: none; }
+button.buy:hover:not(:disabled), button.buy:focus-visible { background: rgba(54,216,255,0.3); transform: translateY(-1px); }
+button.buy:disabled { opacity: 0.4; cursor: not-allowed; }
+.paints { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.paint { display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 8px; background: rgba(255,255,255,0.04); border: 1px solid transparent; }
+.paint.on { border-color: var(--accent); }
+.paint .sw { display: flex; gap: 4px; }
+.paint .sw i { flex: 1; height: 14px; border-radius: 3px; }
+.paint b { font-size: 13px; }
+.rewards { margin: 6px 0 4px; }
+.rw { display: grid; grid-template-columns: 1fr 90px 90px; gap: 10px; padding: 5px 0; font-size: 13px; border-bottom: 1px solid rgba(255,255,255,0.05); font-variant-numeric: tabular-nums; }
+.rw span { color: var(--dim); }
+.rw b { text-align: right; color: var(--accent-2); }
+.rw b + b { color: var(--warn); }
+.rw.muted b { color: var(--dim); }

@@ -3,7 +3,9 @@
  * gameplay systems read from these objects and never hard-code per-aircraft values.
  */
 
-export type AircraftArtId = 'viper' | 'scythe' | 'swift' | 'titan' | 'phantom' | 'nova';
+export type AircraftArtId =
+  | 'viper' | 'scythe' | 'swift' | 'titan' | 'phantom' | 'nova'
+  | 'dart' | 'brute' | 'lancer' | 'stormbreaker';
 
 export interface AircraftDef {
   id: string;
@@ -13,6 +15,16 @@ export interface AircraftDef {
   art: AircraftArtId;
   /** Endless Skies level the player must reach to fly this aircraft (0 = enemy-only). */
   unlockLevel: number;
+  /** Role label shown on the HUD target panel (e.g. "Light fighter"). */
+  role?: string;
+  /** Visual size multiplier for large aircraft (bosses). Collision radius is set separately. */
+  artScale?: number;
+  /** Boss/mini-boss: gets a boss health bar, entrance and destruction sequence. */
+  boss?: boolean;
+  /** Cannon damage multiplier (hangar upgrades). */
+  gunDamageMult?: number;
+  /** Cannon heat-per-shot multiplier (hangar upgrades). */
+  gunHeatMult?: number;
   /** Collision radius (circle). */
   radius: number;
 
@@ -66,6 +78,30 @@ export interface AircraftDef {
 
   ability: string;
 }
+
+/** Shared baseline for enemy airframes. */
+const ENEMY_BASE = {
+  unlockLevel: 0,
+  brakeTurnBonus: 1.3,
+  boostTurnPenalty: 0.8,
+  grip: 5,
+  armor: 0,
+  afterburnerCapacity: 100,
+  afterburnerDrain: 34,
+  afterburnerRegen: 18,
+  afterburnerRegenDelay: 1,
+  afterburnerMinStart: 15,
+  missile: 'hornetRocket',
+  missileRearmTime: 20,
+  missileCooldown: 1.5,
+  lockRange: 1300,
+  lockCone: 0.38,
+  lockTime: 1.25,
+  lockSignature: 1,
+  flareCharges: 2,
+  flareRechargeTime: 12,
+  ability: 'speedBurst',
+};
 
 /** Shared baseline for player airframes; each aircraft overrides what makes it distinct. */
 const PLAYER_BASE = {
@@ -209,43 +245,149 @@ export const AIRCRAFT: Record<string, AircraftDef> = {
     missileCapacity: 5,
     ability: 'energyPulse',
   },
+  // ------------------------------------------------------------ enemies ----
   scythe: {
+    ...ENEMY_BASE,
     id: 'scythe',
     name: 'KR-3 Scythe',
     className: 'Interceptor',
-    description: 'Forward-swept hostile interceptor. Nimble, lightly armoured.',
+    role: 'Interceptor',
+    description: 'Forward-swept interceptor: extremely fast and aggressive, lightly armoured.',
     art: 'scythe',
-    unlockLevel: 0,
     radius: 23,
+    cruiseSpeed: 450,
+    maxSpeed: 580,
+    minSpeed: 220,
+    boostSpeed: 860,
+    acceleration: 450,
+    deceleration: 480,
+    turnRate: 3.1,
+    health: 60,
+    gun: 'scatterGun',
+    missileCapacity: 2,
+  },
+  dart: {
+    ...ENEMY_BASE,
+    id: 'dart',
+    name: 'LF-1 Dart',
+    className: 'Light Fighter',
+    role: 'Light fighter',
+    description: 'Small delta light fighter. Nimble but fragile.',
+    art: 'dart',
+    radius: 20,
+    cruiseSpeed: 430,
+    maxSpeed: 550,
+    minSpeed: 210,
+    boostSpeed: 760,
+    acceleration: 430,
+    deceleration: 500,
+    turnRate: 3.6,
+    grip: 5.5,
+    health: 45,
+    gun: 'lightGun',
+    missileCapacity: 1,
+    missileRearmTime: 25,
+    flareCharges: 1,
+  },
+  brute: {
+    ...ENEMY_BASE,
+    id: 'brute',
+    name: 'HB-6 Brute',
+    className: 'Heavy Fighter',
+    role: 'Heavy fighter',
+    description: 'Twin-boom heavy fighter: slow and armoured with a hard-hitting cannon.',
+    art: 'brute',
+    radius: 28,
+    cruiseSpeed: 350,
+    maxSpeed: 470,
+    minSpeed: 190,
+    boostSpeed: 640,
+    acceleration: 320,
+    deceleration: 440,
+    turnRate: 2.3,
+    health: 150,
+    armor: 0.15,
+    gun: 'enemyHeavyGun',
+    missileCapacity: 2,
+  },
+  lancer: {
+    ...ENEMY_BASE,
+    id: 'lancer',
+    name: 'ML-4 Lancer',
+    className: 'Missile Carrier',
+    role: 'Missile carrier',
+    description: 'Long-range missile platform. Keeps its distance and fills the sky with seekers.',
+    art: 'lancer',
+    radius: 24,
     cruiseSpeed: 400,
     maxSpeed: 520,
-    minSpeed: 220,
-    boostSpeed: 720,
-    acceleration: 380,
+    minSpeed: 210,
+    boostSpeed: 740,
+    acceleration: 400,
     deceleration: 480,
-    turnRate: 3.0,
-    brakeTurnBonus: 1.3,
-    boostTurnPenalty: 0.8,
-    grip: 5,
+    turnRate: 2.7,
     health: 70,
-    armor: 0,
-    afterburnerCapacity: 100,
-    afterburnerDrain: 34,
-    afterburnerRegen: 18,
-    afterburnerRegenDelay: 1,
-    afterburnerMinStart: 15,
-    gun: 'scatterGun',
-    missile: 'hornetRocket',
-    missileCapacity: 2,
-    missileRearmTime: 20,
-    missileCooldown: 1.5,
-    lockRange: 1300,
-    lockCone: 0.38,
-    lockTime: 1.25,
-    lockSignature: 1,
-    flareCharges: 2,
-    flareRechargeTime: 12,
-    ability: 'speedBurst',
+    gun: 'lightGun',
+    missileCapacity: 6,
+    missileRearmTime: 7,
+    missileCooldown: 2.2,
+    lockRange: 1800,
+    lockCone: 0.5,
+    lockTime: 1.0,
+  },
+  warden: {
+    ...ENEMY_BASE,
+    id: 'warden',
+    name: 'WARDEN',
+    className: 'Heavy Ace',
+    role: 'Mini-boss',
+    description: 'Up-armoured heavy fighter flown by an ace. Guards the end of every sector.',
+    art: 'brute',
+    artScale: 1.45,
+    boss: true,
+    radius: 38,
+    cruiseSpeed: 380,
+    maxSpeed: 500,
+    minSpeed: 190,
+    boostSpeed: 700,
+    acceleration: 360,
+    deceleration: 460,
+    turnRate: 2.4,
+    health: 420,
+    armor: 0.2,
+    gun: 'wardenGun',
+    missileCapacity: 4,
+    missileRearmTime: 8,
+    missileCooldown: 1.6,
+    flareCharges: 3,
+    flareRechargeTime: 8,
+  },
+  stormbreaker: {
+    ...ENEMY_BASE,
+    id: 'stormbreaker',
+    name: 'STORMBREAKER',
+    className: 'Strategic Gunship',
+    role: 'Boss',
+    description: 'A flying fortress: missile batteries, flak cannons and escort drones.',
+    art: 'stormbreaker',
+    artScale: 2.6,
+    boss: true,
+    radius: 72,
+    cruiseSpeed: 300,
+    maxSpeed: 420,
+    minSpeed: 140,
+    boostSpeed: 560,
+    acceleration: 220,
+    deceleration: 300,
+    turnRate: 1.4,
+    grip: 4,
+    health: 1600,
+    armor: 0.25,
+    gun: 'bossCannon',
+    missileCapacity: 0,
+    lockRange: 2200,
+    lockCone: 1.2,
+    flareCharges: 0,
   },
 };
 

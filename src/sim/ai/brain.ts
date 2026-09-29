@@ -6,12 +6,12 @@ import type { Personality } from './personalities';
 
 export type AiState =
   | 'PATROL' | 'SEARCH' | 'APPROACH' | 'ATTACK' | 'EVADE'
-  | 'MISSILE_DODGE' | 'RETREAT' | 'REPOSITION' | 'DESTROYED';
+  | 'MISSILE_DODGE' | 'RETREAT' | 'REPOSITION' | 'PASS' | 'TURN_BACK' | 'KITE' | 'DESTROYED';
 
 /** How far the AI can "see" enemies. */
 const DETECT_RANGE = 3200;
 /** Incoming missile distance that triggers a dodge. */
-const MISSILE_DODGE_DIST = 950;
+const MISSILE_DODGE_DIST = 650;
 /** Distance at which a flare is worth popping. */
 const FLARE_TRIGGER_DIST = 380;
 /** Terrain look-ahead times (seconds of travel). */
@@ -23,6 +23,10 @@ const EDGE_SAFE = 450;
 const STEALTH_VISIBLE_RANGE = 450;
 /** Cone in which the AI will pull the trigger (radians, before skill scaling). */
 const FIRE_CONE = 0.1;
+/** Look-ahead (seconds) for avoiding a mid-air collision with another aircraft. */
+const COLLISION_LOOKAHEAD = 0.8;
+/** Once the nose is back within this angle of the target after a pass, re-engage. */
+const TURN_BACK_DONE = 0.5;
 
 /**
  * Finite-state AI pilot. Produces an InputCommand each tick exactly like a
@@ -42,6 +46,8 @@ export class AiBrain {
   private jinkSign = 1;
   private jinkTimer = 0;
   private flareRolled = false;
+  /** Small heading bias used while extending (so passes aren't perfectly straight lines). */
+  private passBias = 0;
   private missileHeld = false;
   private readonly cmd: InputCommand = emptyCommand();
 
@@ -191,12 +197,45 @@ export class AiBrain {
         boost = self.boostEnergy > 60 && world.rng.next() < p.boostUse * 0.4;
         break;
       }
+      case 'PASS': {
+        // Blow through past the target and extend, drifting slightly off-axis so the
+        // turn-around doesn't come straight back onto the target's guns.
+        const a = self.heading + this.passBias;
+        sx = Math.cos(a);
+        sy = Math.sin(a);
+        boost = self.boostEnergy > 40 && p.boostUse > 0.4;
+        if (this.stateTime > this.stateDuration) this.setState('TURN_BACK');
+        break;
+      }
+      case 'TURN_BACK': {
+        if (!target) { this.setState('PATROL'); break; }
+        // Haul the nose back around toward the target (brake-turn if the pilot knows how).
+        const want = Math.atan2(target.y - self.y, target.x - self.x);
+        sx = Math.cos(want);
+        sy = Math.sin(want);
+        const off = Math.abs(angleDiff(self.heading, want));
+        brake = p.brakeTurns && off > 1.4;
+        if (off < TURN_BACK_DONE || this.stateTime > 4) this.setState('ATTACK');
+        break;
+      }
+      case 'KITE': {
+        // Stand-off pilots open the range again, then turn to face the target and fire missiles.
+        if (!target) { this.setState('PATROL'); break; }
+        const away = Math.atan2(self.y - target.y, self.x - target.x);
+        const want = away + this.passBias * 2;
+        sx = Math.cos(want);
+        sy = Math.sin(want);
+        boost = self.boostEnergy > 30;
+        if (dist(self, target) > p.preferredRange) this.setState('TURN_BACK');
+        break;
+      }
       case 'DESTROYED':
         break;
     }
 
-    // --- Safety overrides: terrain, ceiling, map edges ---
-    [sx, sy] = this.avoidHazards(world, self, sx, sy);
+    // --- Safety overrides: other aircraft, terrain, ceiling, map edges ---
+    [sx, sy] = avoidAircraft(world, self, sx, sy);
+    [sx, sy] = avoidHazards(world, self, sx, sy);
 
     cmd.steerX = sx;
     cmd.steerY = sy;
@@ -211,6 +250,11 @@ export class AiBrain {
     const timed = this.stateDuration > 0 && this.stateTime < this.stateDuration;
     if (this.state === 'MISSILE_DODGE' && self.incomingMissileDist < Infinity) return;
     if (timed && (this.state === 'EVADE' || this.state === 'RETREAT' || this.state === 'REPOSITION')) return;
+    // Mid-maneuver: let passes and turn-arounds play out.
+    if (this.state === 'PASS' || this.state === 'TURN_BACK' || this.state === 'KITE') {
+      if (target && this.state !== 'KITE') return;
+      if (target && this.state === 'KITE' && dist(self, target) < p.preferredRange) return;
+    }
 
     if (!target) {
       this.setState(this.state === 'PATROL' ? 'PATROL' : 'SEARCH');
@@ -230,6 +274,20 @@ export class AiBrain {
     if (((targetBehind && targetAimingAtUs && d < 900) || self.timeSinceDamaged < 0.4 || self.lockedOn) &&
         rng.next() < p.evadeTendency) {
       this.setState('EVADE', 0.8 + rng.next() * 1.2);
+      return;
+    }
+    if (d < p.minRange && p.standoff) {
+      // Missile boats hate close range: open the distance again.
+      this.passBias = (rng.next() - 0.5) * 0.6;
+      this.setState('KITE');
+      return;
+    }
+    if (d < p.minRange && this.state === 'ATTACK') {
+      // Classic dogfight pass: overshoot, extend, then turn back for another run.
+      // Veer to the side away from the target so the pass never goes through it.
+      const toT = angleDiff(self.heading, Math.atan2(target.y - self.y, target.x - self.x));
+      this.passBias = -(Math.sign(toT) || 1) * (0.35 + rng.next() * 0.25);
+      this.setState('PASS', 0.7 + rng.next() * 0.8 + (1 - this.skill) * 0.4);
       return;
     }
     if (d < p.minRange) {
@@ -286,28 +344,65 @@ export class AiBrain {
     this.patrolY = r.range(450, Math.min(world.terrain.groundY(this.patrolX) - 450, world.map.seaLevel - 600));
   }
 
-  private avoidHazards(world: World, self: Aircraft, sx: number, sy: number): [number, number] {
-    const t = world.terrain;
-    let danger = 0;
-    for (const s of TERRAIN_PROBES) {
-      const x = self.x + self.vx * s;
-      const y = self.y + self.vy * s;
-      const c = t.groundY(x) - y;
-      if (c < TERRAIN_SAFE_CLEARANCE) danger = Math.max(danger, 1 - c / TERRAIN_SAFE_CLEARANCE / 2);
-    }
-    if (self.y > t.groundY(self.x) - TERRAIN_SAFE_CLEARANCE) danger = Math.max(danger, 0.8);
-    if (danger > 0) {
-      // Pull up, keeping horizontal direction of travel.
-      const k = clamp(danger, 0, 1);
-      sx = sx * (1 - k) + Math.sign(self.vx || 1) * 0.35 * k;
-      sy = sy * (1 - k) - 1 * k;
-    }
-    if (self.y < CEILING_SAFE) sy = Math.max(sy, 0.6);
-    if (self.x < EDGE_SAFE) sx = Math.max(sx, 0.7);
-    else if (self.x > world.map.width - EDGE_SAFE) sx = Math.min(sx, -0.7);
-    const m = Math.hypot(sx, sy);
-    return m > 0.001 ? [sx / m, sy / m] : [0, 0];
+}
+
+/** Steer away from terrain, the ceiling and the map edges (shared by all AI pilots). */
+export function avoidHazards(world: World, self: Aircraft, sx: number, sy: number): [number, number] {
+  const t = world.terrain;
+  let danger = 0;
+  for (const s of TERRAIN_PROBES) {
+    const x = self.x + self.vx * s;
+    const y = self.y + self.vy * s;
+    const c = t.groundY(x) - y;
+    if (c < TERRAIN_SAFE_CLEARANCE) danger = Math.max(danger, 1 - c / TERRAIN_SAFE_CLEARANCE / 2);
   }
+  if (self.y > t.groundY(self.x) - TERRAIN_SAFE_CLEARANCE) danger = Math.max(danger, 0.8);
+  if (danger > 0) {
+    // Pull up, keeping horizontal direction of travel.
+    const k = clamp(danger, 0, 1);
+    sx = sx * (1 - k) + Math.sign(self.vx || 1) * 0.35 * k;
+    sy = sy * (1 - k) - 1 * k;
+  }
+  if (self.y < CEILING_SAFE) sy = Math.max(sy, 0.6);
+  if (self.x < EDGE_SAFE) sx = Math.max(sx, 0.7);
+  else if (self.x > world.map.width - EDGE_SAFE) sx = Math.min(sx, -0.7);
+  const m = Math.hypot(sx, sy);
+  return m > 0.001 ? [sx / m, sy / m] : [0, 0];
+}
+
+/** Break away from any aircraft we're about to fly into (friend or foe). */
+export function avoidAircraft(world: World, self: Aircraft, sx: number, sy: number): [number, number] {
+  let ax = 0;
+  let ay = 0;
+  let threat = 0;
+  for (const o of world.aircraft) {
+    if (o === self || !o.alive) continue;
+    const rx = o.x - self.x;
+    const ry = o.y - self.y;
+    if (Math.abs(rx) > 900 || Math.abs(ry) > 900) continue;
+    const safe = (self.def.radius + o.def.radius) * 2.2;
+    // Closest approach over the look-ahead window, assuming both hold velocity.
+    const rvx = o.vx - self.vx;
+    const rvy = o.vy - self.vy;
+    const rv2 = rvx * rvx + rvy * rvy;
+    const t = rv2 > 1 ? clamp(-(rx * rvx + ry * rvy) / rv2, 0, COLLISION_LOOKAHEAD) : 0;
+    const cx = rx + rvx * t;
+    const cy = ry + rvy * t;
+    const miss = Math.hypot(cx, cy);
+    if (miss > safe) continue;
+    // Steer away from where the other aircraft will be, weighted by urgency.
+    const w = (1 - miss / safe) * (1 - t / COLLISION_LOOKAHEAD * 0.5);
+    const m = miss || 1;
+    ax -= (cx / m) * w;
+    ay -= (cy / m) * w;
+    threat = Math.max(threat, w);
+  }
+  if (threat <= 0) return [sx, sy];
+  const k = clamp(threat * 2, 0, 1);
+  const bx = sx * (1 - k) + ax * k * 3;
+  const by = sy * (1 - k) + ay * k * 3;
+  const m = Math.hypot(bx, by);
+  return m > 0.001 ? [bx / m, by / m] : [sx, sy];
 }
 
 function dist(a: { x: number; y: number }, b: { x: number; y: number }): number {

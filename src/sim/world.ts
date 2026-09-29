@@ -10,7 +10,13 @@ import {
   type Aircraft, type Bullet, type Flare, type Missile, type SimEvent,
 } from './types';
 import type { GameMode } from './modes/mode';
-import type { AiBrain } from './ai/brain';
+import type { InputCommand } from './types';
+
+/** Anything that can fly an aircraft by producing commands (AI pilots, bosses). */
+export interface Pilot {
+  state: string;
+  think(world: World, self: Aircraft): InputCommand;
+}
 
 export interface WorldOptions {
   mapId: string;
@@ -38,7 +44,7 @@ export class World {
   events: SimEvent[] = [];
   mode: GameMode | null = null;
   /** AI pilots, keyed by aircraft id. The sim runs these itself (server-side in online play). */
-  readonly brains = new Map<number, AiBrain>();
+  readonly brains = new Map<number, Pilot>();
 
   private nextId = 1;
   private nextMissileId = 1;

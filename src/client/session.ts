@@ -1,5 +1,7 @@
 import { AiBrain } from '../sim/ai/brain';
 import { PERSONALITIES } from '../sim/ai/personalities';
+import { getAircraftDef } from '../sim/config/aircraft';
+import { applyUpgrades, type UpgradeLevels } from '../sim/config/upgrades';
 import { TEAM_BLUE, TEAM_ORANGE, TICK_DT } from '../sim/constants';
 import { AttractMode } from '../sim/modes/attract';
 import { WaveMode } from '../sim/modes/waves';
@@ -80,6 +82,8 @@ export interface WaveSessionOptions {
   callsign: string;
   lives: number;
   seed?: number;
+  /** Purchased hangar upgrades for this aircraft (applied to its real stats). */
+  upgrades?: UpgradeLevels;
 }
 
 /** Offline "Endless Skies" match: the local pilot vs waves of AI. */
@@ -91,7 +95,8 @@ export class WaveSession extends LocalSession {
   constructor(opts: WaveSessionOptions) {
     super();
     this.world = new World({ mapId: 'azureCoast', seed: opts.seed ?? (Date.now() & 0x7fffffff) });
-    const p = this.world.addAircraft(opts.aircraft, TEAM_BLUE, opts.callsign, true, opts.lives);
+    const overrides = opts.upgrades ? applyUpgrades(getAircraftDef(opts.aircraft), opts.upgrades) : undefined;
+    const p = this.world.addAircraft(opts.aircraft, TEAM_BLUE, opts.callsign, true, opts.lives, overrides);
     this.localId = p.id;
     this.mode = new WaveMode([p.id]);
     this.world.mode = this.mode;

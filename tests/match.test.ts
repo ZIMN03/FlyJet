@@ -78,7 +78,9 @@ describe('wave match flow', () => {
       const activeBullets = world.bullets.filter((b) => b.active).length;
       console.log(`seed ${seed}: wave ${mode.wave}, player K/D ${p.stats.kills}/${p.stats.deaths}, ` +
         `aiCrashes ${aiCrashes}, bullets ${activeBullets}`, JSON.stringify(counts));
-      expect(mode.wave).toBeGreaterThanOrEqual(3);
+      // Levels are now three stages (two waves + a boss); a bot should clear several stages.
+      expect(counts.waveClear ?? 0).toBeGreaterThanOrEqual(3);
+      expect(mode.wave).toBeGreaterThanOrEqual(2);
       expect(counts.kill ?? 0).toBeGreaterThan(2);
       expect(counts.missileLaunch ?? 0).toBeGreaterThan(0);
       // AI shouldn't be flying into the terrain constantly.

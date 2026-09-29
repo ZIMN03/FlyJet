@@ -266,7 +266,142 @@ const nova: Airframe = {
   },
 };
 
-const AIRFRAMES: Record<AircraftArtId, Airframe> = { viper, scythe, swift, titan, phantom, nova };
+// ---- LF-1 Dart (light fighter): small tailed delta ---------------------------
+const DART_BODY: Poly = [30, 0, 18, -3, 2, -4.5, -16, -4, -24, -2.5, -26, 0, -26, 3, -14, 4, 6, 4, 20, 2.5];
+const DART_BELLY: Poly = [30, 0, 20, 2.5, 6, 4, -14, 4, -26, 3, -26, 1, 0, 1.5];
+const DART_CANOPY: Poly = [14, -3.5, 8, -8, 0, -8, -4, -4.5];
+const DART_WING: Poly = [8, 1.5, -20, 9.5, -26, 9.5, -22, 1.5];
+const DART_WING_TIP: Poly = [-17, 8, -25, 8, -26, 9.5, -19.5, 9.5];
+const DART_FIN: Poly = [-12, -4, -20, -13, -25, -13, -24, -3];
+const DART_STRIPE: Poly = [22, -1, -10, -2.6, -10, -1.4, 22, 0.4];
+
+const dart: Airframe = {
+  nozzleX: -26,
+  nozzleHalf: 2.4,
+  length: 58,
+  draw(ctx, p) {
+    poly(ctx, DART_FIN, p.body);
+    poly(ctx, DART_BODY, p.body);
+    poly(ctx, DART_BELLY, p.bodyDark);
+    poly(ctx, DART_STRIPE, p.accent);
+    poly(ctx, DART_CANOPY, p.canopy);
+    poly(ctx, DART_WING, p.wing);
+    poly(ctx, DART_WING_TIP, p.accent);
+    ctx.fillStyle = p.nozzle;
+    ctx.fillRect(-28.5, -2.4, 2.5, 4.8);
+  },
+};
+
+// ---- HB-6 Brute (heavy fighter): twin-boom, thick straight wing ---------------
+const BRUTE_BODY: Poly = [36, 3, 26, -6, 12, -10, -8, -11, -26, -10, -38, -7, -38, 8, -26, 10, 10, 10, 26, 7];
+const BRUTE_BELLY: Poly = [36, 3, 26, 7, 10, 10, -26, 10, -38, 8, -38, 3, 0, 4];
+const BRUTE_CANOPY: Poly = [20, -8, 14, -14, 4, -14.5, -2, -10.5];
+const BRUTE_FIN_TOP: Poly = [-20, -11, -30, -24, -38, -24, -39, -8];
+const BRUTE_FIN_LOW: Poly = [-22, 9, -30, 19, -37, 19, -38, 7];
+const BRUTE_WING: Poly = [10, 4, 4, 15, -18, 15, -20, 4];
+const BRUTE_PLATE: Poly = [28, -2, -24, -6, -24, -4, 28, 0];
+const BRUTE_INTAKE: Poly = [18, 2, 6, 8, -8, 8, -6, 2];
+const BRUTE_FIN_STRIPE: Poly = [-27, -20, -36.5, -20, -37, -17, -25, -17];
+
+const brute: Airframe = {
+  nozzleX: -38,
+  nozzleHalf: 6.5,
+  length: 80,
+  draw(ctx, p, missiles) {
+    poly(ctx, BRUTE_FIN_LOW, p.bodyDark);
+    poly(ctx, BRUTE_FIN_TOP, p.body);
+    poly(ctx, BRUTE_FIN_STRIPE, p.accent);
+    poly(ctx, BRUTE_BODY, p.body);
+    poly(ctx, BRUTE_BELLY, p.bodyDark);
+    poly(ctx, BRUTE_INTAKE, '#16181c');
+    poly(ctx, BRUTE_PLATE, p.accent);
+    poly(ctx, BRUTE_CANOPY, p.canopy);
+    poly(ctx, BRUTE_WING, p.wing);
+    if (missiles) poly(ctx, [4, 15.5, -14, 15.5, -15, 17.5, 4, 17.5], '#c9cdd2');
+    ctx.fillStyle = p.nozzle;
+    ctx.fillRect(-42, -7, 4.5, 5);
+    ctx.fillRect(-42, 2, 4.5, 5);
+  },
+};
+
+// ---- ML-4 Lancer (missile carrier): long fuselage, straight wing, pylons ------
+const LANCER_BODY: Poly = [42, 1, 30, -3, 12, -5.5, -20, -6, -34, -4, -40, -1, -40, 4, -30, 5.5, 10, 5.5, 30, 3];
+const LANCER_BELLY: Poly = [42, 1, 30, 3, 10, 5.5, -30, 5.5, -40, 4, -40, 1.5, 0, 2];
+const LANCER_CANOPY: Poly = [26, -3, 20, -8, 12, -8.5, 8, -5.5];
+const LANCER_WING: Poly = [4, 3, -2, 13, -16, 13, -14, 3];
+const LANCER_FIN: Poly = [-24, -6, -32, -17, -38, -17, -38, -4];
+const LANCER_STRIPE: Poly = [34, -0.5, -26, -3.2, -26, -1.8, 34, 0.8];
+
+const lancer: Airframe = {
+  nozzleX: -40,
+  nozzleHalf: 2.8,
+  length: 86,
+  draw(ctx, p, missiles) {
+    poly(ctx, LANCER_FIN, p.body);
+    poly(ctx, [-30, -14, -37, -14, -37.5, -12, -29, -12], p.accent);
+    poly(ctx, LANCER_BODY, p.body);
+    poly(ctx, LANCER_BELLY, p.bodyDark);
+    poly(ctx, LANCER_STRIPE, p.accent);
+    poly(ctx, LANCER_CANOPY, p.canopy);
+    poly(ctx, LANCER_WING, p.wing);
+    if (missiles) {
+      // Missile racks are its whole identity: always visibly loaded.
+      poly(ctx, [2, 13.5, -16, 13.5, -17, 15.8, 2, 15.8], '#e6e9ec');
+      poly(ctx, [5, 14.6, 2, 13.5, 2, 15.8], p.accent);
+      poly(ctx, [18, 6, 0, 6, -1, 8, 18, 8], '#e6e9ec');
+      poly(ctx, [21, 7, 18, 6, 18, 8], p.accent);
+    }
+    ctx.fillStyle = p.nozzle;
+    ctx.fillRect(-43, -2.8, 3.5, 5.6);
+  },
+};
+
+// ---- STORMBREAKER (boss): armoured flying fortress, drawn at ~2.6x ------------
+const SB_HULL: Poly = [40, 2, 28, -6, 6, -10, -20, -12, -38, -9, -42, -4, -42, 6, -32, 11, -10, 13, 14, 10, 30, 6];
+const SB_BELLY: Poly = [40, 2, 30, 6, 14, 10, -10, 13, -32, 11, -42, 6, -42, 3, 0, 4];
+const SB_CANOPY: Poly = [26, -5, 20, -9, 8, -10, 4, -7];
+const SB_WING: Poly = [12, 4, -18, 22, -34, 22, -26, 4];
+const SB_TAIL: Poly = [-26, -11, -34, -24, -40, -24, -42, -8];
+const SB_STRIPE: Poly = [30, -2, -30, -7, -30, -5, 30, 0];
+const SB_POD: Poly = [-4, 16, -24, 16, -26, 20, -2, 20];
+
+const stormbreaker: Airframe = {
+  nozzleX: -42,
+  nozzleHalf: 7,
+  length: 84,
+  draw(ctx, p) {
+    poly(ctx, SB_TAIL, p.bodyDark);
+    poly(ctx, [-31, -20, -39, -20, -39.5, -17, -30, -17], p.accent);
+    poly(ctx, SB_HULL, p.body);
+    poly(ctx, SB_BELLY, p.bodyDark);
+    poly(ctx, SB_STRIPE, p.accent);
+    poly(ctx, SB_CANOPY, p.canopy);
+    poly(ctx, SB_WING, p.wing);
+    poly(ctx, SB_POD, p.bodyDark);
+    // Dorsal flak turret.
+    ctx.fillStyle = p.bodyDark;
+    ctx.beginPath();
+    ctx.arc(-4, -12, 4, Math.PI, 0);
+    ctx.fill();
+    ctx.fillRect(-2, -14.5, 12, 1.6);
+    // Energy cores.
+    ctx.fillStyle = p.accent;
+    for (const [cx, cy, r] of [[-14, -3, 2.6], [6, -3, 2.2], [-14, 18, 1.8]] as const) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = p.nozzle;
+    ctx.fillRect(-46, -6, 4.5, 4);
+    ctx.fillRect(-46, -1, 4.5, 4);
+    ctx.fillRect(-46, 4, 4.5, 4);
+    ctx.fillRect(-28, 16.5, 3, 3);
+  },
+};
+
+const AIRFRAMES: Record<AircraftArtId, Airframe> = {
+  viper, scythe, swift, titan, phantom, nova, dart, brute, lancer, stormbreaker,
+};
 
 export interface DrawOptions {
   /** -1..1 visual roll; the sign keeps the canopy on top. */

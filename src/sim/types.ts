@@ -235,6 +235,11 @@ export type SimEvent =
   | { type: 'matchEnd'; reason: string }
   | { type: 'missileEvaded'; id: number; missileId: number; decoyed: boolean }
   | { type: 'collision'; a: number; b: number; x: number; y: number }
-  | { type: 'overheat'; id: number };
+  | { type: 'overheat'; id: number }
+  | { type: 'bossPhase'; id: number; phase: number }
+  | { type: 'bossIncoming'; name: string; seconds: number }
+  | { type: 'contact'; count: number; bearing: number }
+  | { type: 'stageStart'; level: number; stage: number; stages: number; label: string }
+  | { type: 'levelComplete'; level: number; bonus: number; time: number };
 
 export type DamageSource = 'gun' | 'missile' | 'crash' | 'collision' | 'boundary' | 'pulse' | 'debug';

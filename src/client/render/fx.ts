@@ -50,6 +50,8 @@ export class FxDirector {
   localId = 0;
   /** When false (menu backdrop), effects play silently. */
   soundEnabled = true;
+  /** Paint scheme applied to the local player's aircraft (cosmetic). */
+  playerPaint = 'standard';
 
   constructor(
     private readonly ps: ParticleSystem,

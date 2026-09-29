@@ -70,4 +70,8 @@ export const SCORE = {
   assist: 40,
   missileKillBonus: 15,
   waveClear: 150,
+  /** Extra score for downing a boss/mini-boss, times the level number. */
+  bossKill: 400,
+  /** Level-complete bonus, times the level number. */
+  levelComplete: 500,
 } as const;

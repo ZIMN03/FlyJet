@@ -1,4 +1,5 @@
 import { AiBrain } from '../ai/brain';
+import { BOSS_PROFILES, BossBrain } from '../ai/boss';
 import { PERSONALITIES } from '../ai/personalities';
 import { AIRCRAFT, type AircraftDef } from '../config/aircraft';
 import { COMBAT, SCORE, TEAM_ORANGE } from '../constants';
@@ -10,90 +11,173 @@ import type { GameMode, MatchPhase } from './mode';
 
 export interface WaveConfig {
   countdown: number;
+  /** Pause between stages of a level. */
   intermission: number;
+  /** Warning time before a boss arrives. */
+  bossWarning: number;
+  /** "Level complete" presentation time before the next level starts. */
+  levelComplete: number;
   /** Delay after the last life is lost before the match ends (lets the explosion play). */
   endDelay: number;
-  /** Health restored (fraction of max) on wave clear. */
+  /** Health restored (fraction of max) when a stage is cleared. */
   waveRepair: number;
 }
 
 export const DEFAULT_WAVE_CONFIG: WaveConfig = {
   countdown: 3.5,
-  intermission: 3.5,
+  intermission: 3,
+  bossWarning: 3.2,
+  levelComplete: 4.5,
   endDelay: 2.8,
   waveRepair: 0.3,
 };
 
-/**
- * Personality mix per level (index = level - 1; the last entry repeats).
- * The opening levels are deliberately easy so new pilots get early wins.
- */
-const LEVEL_ROSTER: string[][] = [
-  ['trainee'],
-  ['trainee'],
-  ['trainee'],
-  ['trainee', 'trainee', 'rookie'],
-  ['rookie', 'trainee'],
-  ['rookie', 'aggressive', 'trainee'],
-  ['aggressive', 'defensive', 'rookie'],
-  ['aggressive', 'tactical', 'defensive'],
-  ['tactical', 'aggressive', 'defensive', 'ace'],
-  ['ace', 'tactical', 'aggressive', 'defensive'],
-];
+// ----------------------------------------------------------------- difficulty
+
 /** Level at which enemies reach full strength. */
 const FULL_STRENGTH_LEVEL = 10;
-/** Hard cap on enemies per level (performance / screen clarity). */
-const MAX_LEVEL_ENEMIES = 12;
+/** Hard cap on enemies per wave (performance / screen clarity). */
+const MAX_WAVE_ENEMIES = 12;
+
+/** Which enemy archetypes appear, by level (index = level - 1; last entry repeats). */
+const LEVEL_ARCHETYPES: string[][] = [
+  ['dart'],
+  ['dart', 'dart', 'scythe'],
+  ['dart', 'scythe', 'brute'],
+  ['dart', 'scythe', 'brute', 'lancer'],
+  ['scythe', 'dart', 'lancer', 'brute'],
+  ['scythe', 'brute', 'lancer', 'dart', 'scythe'],
+];
+
+/** Default pilot for each archetype once past the trainee levels. */
+const ARCHETYPE_PERSONALITY: Record<string, string> = {
+  dart: 'aggressive',
+  scythe: 'interceptor',
+  brute: 'heavy',
+  lancer: 'missileBoat',
+};
 
 export interface LevelDifficulty {
+  /** Opponents in the level's first wave (level N => N). */
   enemies: number;
-  roster: string[];
+  /** Archetype mix for this level. */
+  archetypes: string[];
   /** 0..1 AI competence (aim, reaction time). */
   skill: number;
-  /** Per-enemy stat changes on top of the base interceptor. */
-  overrides: Partial<AircraftDef>;
+  /** Strength multipliers applied to each archetype's base stats. */
+  healthMult: number;
+  turnMult: number;
+  speedMult: number;
+  /** Early levels: no enemy missiles or flares. */
+  missiles: boolean;
+  flares: boolean;
 }
 
 /**
- * Difficulty curve. Level N sends N opponents. Early opponents are fragile,
- * slower, turn wider, can't fire missiles and aim badly; everything ramps up
- * until FULL_STRENGTH_LEVEL.
+ * Difficulty curve. Early opponents are fragile, slower, turn wider, can't
+ * fire missiles and aim badly; everything ramps up until FULL_STRENGTH_LEVEL.
  */
 export function levelDifficulty(level: number): LevelDifficulty {
   const t = clamp((level - 1) / (FULL_STRENGTH_LEVEL - 1), 0, 1);
-  const base = AIRCRAFT.scythe;
   return {
-    enemies: clamp(level, 1, MAX_LEVEL_ENEMIES),
-    roster: LEVEL_ROSTER[Math.min(level - 1, LEVEL_ROSTER.length - 1)],
+    enemies: clamp(level, 1, MAX_WAVE_ENEMIES),
+    archetypes: LEVEL_ARCHETYPES[Math.min(level - 1, LEVEL_ARCHETYPES.length - 1)],
     skill: clamp(0.1 + (level - 1) * 0.09, 0.1, 1),
-    overrides: {
-      health: Math.round(base.health * (0.4 + 0.6 * t)),
-      turnRate: base.turnRate * (0.7 + 0.3 * t),
-      cruiseSpeed: base.cruiseSpeed * (0.82 + 0.18 * t),
-      maxSpeed: base.maxSpeed * (0.85 + 0.15 * t),
-      boostSpeed: base.boostSpeed * (0.85 + 0.15 * t),
-      missileCapacity: level <= 2 ? 0 : level <= 4 ? 1 : base.missileCapacity,
-      flareCharges: level <= 2 ? 0 : level <= 5 ? 1 : base.flareCharges,
-    },
+    healthMult: 0.4 + 0.6 * t,
+    turnMult: 0.7 + 0.3 * t,
+    speedMult: 0.85 + 0.15 * t,
+    missiles: level >= 3,
+    flares: level >= 3,
   };
 }
 
-const ENEMY_SPAWN_MIN_DIST = 2000;
-const ENEMY_SPAWN_MAX_DIST = 2900;
+/** Stat overrides for one enemy of `archetype` at the given difficulty. */
+export function enemyOverrides(archetype: string, d: LevelDifficulty): Partial<AircraftDef> {
+  const base = AIRCRAFT[archetype];
+  return {
+    health: Math.round(base.health * d.healthMult),
+    turnRate: base.turnRate * d.turnMult,
+    cruiseSpeed: base.cruiseSpeed * d.speedMult,
+    maxSpeed: base.maxSpeed * d.speedMult,
+    boostSpeed: base.boostSpeed * d.speedMult,
+    missileCapacity: d.missiles ? base.missileCapacity : 0,
+    flareCharges: d.flares ? base.flareCharges : 0,
+  };
+}
+
+/** Pilot personality for an enemy: trainees early, archetype specialists later. */
+export function enemyPersonality(archetype: string, level: number): string {
+  if (level <= 2) return 'trainee';
+  if (level <= 4 && archetype !== 'lancer') return 'rookie';
+  return ARCHETYPE_PERSONALITY[archetype] ?? 'aggressive';
+}
+
+// --------------------------------------------------------------------- stages
+
+export type Stage =
+  | { kind: 'wave'; count: number; label: string }
+  | { kind: 'boss'; boss: 'warden' | 'stormbreaker'; escorts: number; label: string };
+
+/**
+ * A level is a short sequence: two fighter waves, then a boss. The first wave
+ * of level N has N opponents; every third level ends with Stormbreaker,
+ * otherwise the Warden mini-boss.
+ */
+export function levelStages(level: number): Stage[] {
+  const n = clamp(level, 1, MAX_WAVE_ENEMIES);
+  const bigBoss = level % 3 === 0;
+  return [
+    { kind: 'wave', count: n, label: 'Radar contact' },
+    { kind: 'wave', count: Math.min(n + 1, MAX_WAVE_ENEMIES), label: 'Second wave' },
+    {
+      kind: 'boss',
+      boss: bigBoss ? 'stormbreaker' : 'warden',
+      escorts: Math.floor((level - 1) / 2),
+      label: bigBoss ? 'Stormbreaker' : 'Warden',
+    },
+  ];
+}
+
+/** Boss strength scales gently with level so the first Warden is beatable by a new pilot. */
+export function bossOverrides(boss: string, level: number): Partial<AircraftDef> {
+  const base = AIRCRAFT[boss];
+  // Level 1 Warden: about half hull; grows ~10% per level after that.
+  const k = clamp(0.4 + level * 0.1, 0.5, 1.6);
+  return {
+    health: Math.round(base.health * k),
+    turnRate: base.turnRate * clamp(0.8 + level * 0.04, 0.8, 1.15),
+    gunDamageMult: clamp(0.4 + level * 0.1, 0.5, 1.1),
+  };
+}
+
+/** 0..1 boss aggression (salvo size/frequency) by level. */
+export function bossAggression(level: number): number {
+  return clamp((level - 1) / 6, 0, 1);
+}
+
+const SPAWN_MIN_DIST = 2400;
+const SPAWN_MAX_DIST = 3100;
 /** Seconds a destroyed enemy lingers in the world list (lets clients read its last state). */
 const CORPSE_LINGER = 1.5;
 
 /**
- * Offline "Endless Skies" prototype: the player(s) survive escalating waves of
- * AI interceptors with a limited number of lives.
+ * "Endless Skies": levels of staged combat (contact -> second wave -> boss ->
+ * level complete), escalating forever. Limited lives with respawns.
  */
 export class WaveMode implements GameMode {
   readonly id = 'waves';
   phase: MatchPhase = 'countdown';
   phaseTimer: number;
+  /** Current level (1-based). Kept as `wave` for compatibility with saves/UI. */
   wave = 0;
+  /** Stage index within the level (0-based) and the level's stage list. */
+  stage = 0;
+  stages: Stage[] = [];
   survivalTime = 0;
+  levelTime = 0;
   endReason = '';
+  /** Id of the boss currently in the air (0 if none). */
+  bossId = 0;
   private readonly enemies = new Set<number>();
   private readonly corpseTimers = new Map<number, number>();
   private enemySerial = 0;
@@ -113,8 +197,12 @@ export class WaveMode implements GameMode {
     return this.enemies.size;
   }
 
+  /** Ids of all hostiles in the current stage (for HUD/radar). */
+  get enemyIds(): ReadonlySet<number> {
+    return this.enemies;
+  }
+
   update(world: World, dt: number): void {
-    // Clean up destroyed enemies after a short linger.
     for (const [id, t] of this.corpseTimers) {
       const left = t - dt;
       if (left <= 0) {
@@ -122,34 +210,30 @@ export class WaveMode implements GameMode {
         world.removeAircraft(id);
       } else this.corpseTimers.set(id, left);
     }
+    if (this.phase !== 'countdown' && this.phase !== 'ending' && this.phase !== 'ended') {
+      this.survivalTime += dt;
+      this.levelTime += dt;
+    }
 
     switch (this.phase) {
       case 'countdown':
         this.phaseTimer -= dt;
-        if (this.phaseTimer <= 0) this.startWave(world);
+        if (this.phaseTimer <= 0) this.startLevel(world, 1);
         break;
       case 'playing':
-        this.survivalTime += dt;
-        if (this.enemies.size === 0) {
-          const bonus = SCORE.waveClear * this.wave;
-          for (const id of this.playerIds) {
-            const p = world.getAircraft(id);
-            if (!p) continue;
-            p.stats.score += bonus;
-            if (p.alive) {
-              p.health = Math.min(p.def.health, p.health + p.def.health * this.config.waveRepair);
-              p.missileAmmo = p.def.missileCapacity;
-            }
-          }
-          world.emit({ type: 'waveClear', wave: this.wave, bonus });
-          this.phase = 'intermission';
-          this.phaseTimer = this.config.intermission;
-        }
+        if (this.enemies.size === 0) this.stageCleared(world);
         break;
       case 'intermission':
-        this.survivalTime += dt;
         this.phaseTimer -= dt;
-        if (this.phaseTimer <= 0) this.startWave(world);
+        if (this.phaseTimer <= 0) this.startStage(world);
+        break;
+      case 'bossWarning':
+        this.phaseTimer -= dt;
+        if (this.phaseTimer <= 0) this.spawnBoss(world);
+        break;
+      case 'levelComplete':
+        this.phaseTimer -= dt;
+        if (this.phaseTimer <= 0) this.startLevel(world, this.wave + 1);
         break;
       case 'ending':
         this.phaseTimer -= dt;
@@ -161,7 +245,6 @@ export class WaveMode implements GameMode {
       case 'ended':
         break;
     }
-
     this.updateRespawns(world, dt);
   }
 
@@ -178,9 +261,14 @@ export class WaveMode implements GameMode {
     }
   }
 
-  onDestroyed(world: World, victim: Aircraft, _killerId: number): void {
+  onDestroyed(world: World, victim: Aircraft, killerId: number): void {
     if (this.enemies.delete(victim.id)) {
       this.corpseTimers.set(victim.id, CORPSE_LINGER);
+      if (victim.id === this.bossId) {
+        this.bossId = 0;
+        const killer = world.getAircraft(killerId);
+        if (killer && this.playerIds.includes(killer.id)) killer.stats.score += SCORE.bossKill * this.wave;
+      }
       return;
     }
     if (!this.playerIds.includes(victim.id)) return;
@@ -201,29 +289,123 @@ export class WaveMode implements GameMode {
     }
   }
 
-  /** Start the next level (`wave` is the current level number, 1-based). */
-  private startWave(world: World): void {
-    this.wave++;
-    this.phase = 'playing';
-    this.phaseTimer = 0;
-    const diff = levelDifficulty(this.wave);
-    const count = diff.enemies;
-    const anchor = this.playerAnchor(world);
-    for (let i = 0; i < count; i++) {
-      const pers = PERSONALITIES[diff.roster[i % diff.roster.length]];
-      const e = world.addAircraft('scythe', TEAM_ORANGE, `${pers.label} ${++this.enemySerial}`, false, 1, diff.overrides);
-      world.brains.set(e.id, new AiBrain(pers, diff.skill));
-      const side = i % 2 === 0 ? 1 : -1;
-      let x = anchor.x + side * world.rng.range(ENEMY_SPAWN_MIN_DIST, ENEMY_SPAWN_MAX_DIST);
-      if (x < 700 || x > world.map.width - 700) x = anchor.x - side * world.rng.range(ENEMY_SPAWN_MIN_DIST, ENEMY_SPAWN_MAX_DIST);
-      x = clamp(x, 700, world.map.width - 700);
-      const ceilingY = world.terrain.groundY(x) - 500;
-      const y = clamp(world.rng.range(450, 1400), 400, ceilingY);
-      spawnAircraft(world, e, x, y, x > anchor.x ? -1 : 1);
-      e.spawnProtection = 0.8;
-      this.enemies.add(e.id);
+  // ------------------------------------------------------------- level flow
+
+  private startLevel(world: World, level: number): void {
+    this.wave = level;
+    this.stages = levelStages(level);
+    this.stage = 0;
+    this.levelTime = 0;
+    for (const id of this.playerIds) {
+      const p = world.getAircraft(id);
+      if (p && p.alive && level > 1) {
+        // A fresh level: fully repaired and rearmed.
+        p.health = p.def.health;
+        p.missileAmmo = p.def.missileCapacity;
+        p.flareCharges = p.def.flareCharges;
+      }
     }
-    world.emit({ type: 'waveStart', wave: this.wave, enemies: count });
+    this.startStage(world);
+  }
+
+  private startStage(world: World): void {
+    const st = this.stages[this.stage];
+    world.emit({ type: 'stageStart', level: this.wave, stage: this.stage + 1, stages: this.stages.length, label: st.label });
+    if (st.kind === 'boss') {
+      this.phase = 'bossWarning';
+      this.phaseTimer = this.config.bossWarning;
+      world.emit({ type: 'bossIncoming', name: AIRCRAFT[st.boss].name, seconds: this.config.bossWarning });
+      return;
+    }
+    this.phase = 'playing';
+    const diff = levelDifficulty(this.wave);
+    const anchor = this.playerAnchor(world);
+    const side = world.rng.next() < 0.5 ? -1 : 1;
+    for (let i = 0; i < st.count; i++) {
+      const archetype = diff.archetypes[(i + this.stage) % diff.archetypes.length];
+      this.spawnEnemy(world, archetype, anchor, side, i, diff);
+    }
+    // Legacy event kept so existing listeners (music, stats) still fire.
+    world.emit({ type: 'waveStart', wave: this.wave, enemies: st.count });
+    world.emit({ type: 'contact', count: st.count, bearing: side > 0 ? 0 : Math.PI });
+  }
+
+  private spawnEnemy(
+    world: World, archetype: string, anchor: { x: number; y: number }, side: number, i: number, diff: LevelDifficulty,
+  ): Aircraft {
+    const pers = PERSONALITIES[enemyPersonality(archetype, this.wave)];
+    const e = world.addAircraft(archetype, TEAM_ORANGE, `${AIRCRAFT[archetype].role ?? pers.label} ${++this.enemySerial}`,
+      false, 1, enemyOverrides(archetype, diff));
+    world.brains.set(e.id, new AiBrain(pers, diff.skill));
+    // Groups come in from one side, loosely stacked, so the fight has a direction.
+    const s = i % 3 === 2 ? -side : side;
+    let x = anchor.x + s * world.rng.range(SPAWN_MIN_DIST, SPAWN_MAX_DIST);
+    if (x < 700 || x > world.map.width - 700) x = anchor.x - s * world.rng.range(SPAWN_MIN_DIST, SPAWN_MAX_DIST);
+    x = clamp(x, 700, world.map.width - 700);
+    const y = clamp(world.rng.range(450, 1400) + i * 60, 400, world.terrain.groundY(x) - 500);
+    spawnAircraft(world, e, x, y, x > anchor.x ? -1 : 1);
+    e.spawnProtection = 0.8;
+    this.enemies.add(e.id);
+    return e;
+  }
+
+  private spawnBoss(world: World): void {
+    const st = this.stages[this.stage];
+    if (st.kind !== 'boss') return;
+    this.phase = 'playing';
+    const anchor = this.playerAnchor(world);
+    const x = anchor.x < world.map.width / 2 ? world.map.width - 900 : 900;
+    const boss = world.addAircraft(st.boss, TEAM_ORANGE, AIRCRAFT[st.boss].name, false, 1, bossOverrides(st.boss, this.wave));
+    const escorts = new Set<number>();
+    const diff = levelDifficulty(this.wave);
+    const brain = new BossBrain(BOSS_PROFILES[st.boss], {
+      spawnEscorts: (b, count) => {
+        for (let k = 0; k < count; k++) {
+          const e = this.spawnEnemy(world, 'dart', { x: b.x, y: b.y }, 1, k, diff);
+          // Drones launch right from the boss, not from the map edge.
+          e.x = e.px = clamp(b.x + (k ? 120 : -120), 400, world.map.width - 400);
+          e.y = e.py = clamp(b.y + 80, 400, world.terrain.groundY(e.x) - 300);
+          escorts.add(e.id);
+        }
+        return count;
+      },
+      escortsAlive: () => [...escorts].filter((id) => this.enemies.has(id)).length,
+    }, bossAggression(this.wave));
+    world.brains.set(boss.id, brain);
+    spawnAircraft(world, boss, x, 700, x > anchor.x ? -1 : 1);
+    boss.spawnProtection = 1.5;
+    this.enemies.add(boss.id);
+    this.bossId = boss.id;
+    for (let i = 0; i < st.escorts; i++) this.spawnEnemy(world, diff.archetypes[i % diff.archetypes.length], anchor, x > anchor.x ? 1 : -1, i, diff);
+  }
+
+  private stageCleared(world: World): void {
+    const last = this.stage >= this.stages.length - 1;
+    const bonus = SCORE.waveClear * this.wave;
+    for (const id of this.playerIds) {
+      const p = world.getAircraft(id);
+      if (!p) continue;
+      p.stats.score += bonus;
+      if (p.alive) {
+        p.health = Math.min(p.def.health, p.health + p.def.health * this.config.waveRepair);
+        p.missileAmmo = p.def.missileCapacity;
+      }
+    }
+    world.emit({ type: 'waveClear', wave: this.wave, bonus });
+    if (last) {
+      const levelBonus = SCORE.levelComplete * this.wave;
+      for (const id of this.playerIds) {
+        const p = world.getAircraft(id);
+        if (p) p.stats.score += levelBonus;
+      }
+      world.emit({ type: 'levelComplete', level: this.wave, bonus: levelBonus, time: this.levelTime });
+      this.phase = 'levelComplete';
+      this.phaseTimer = this.config.levelComplete;
+    } else {
+      this.stage++;
+      this.phase = 'intermission';
+      this.phaseTimer = this.config.intermission;
+    }
   }
 
   private playerAnchor(world: World): { x: number; y: number } {

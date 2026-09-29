@@ -3,7 +3,10 @@ import { ABILITIES } from '../../sim/config/abilities';
 import { GUNS, MISSILES } from '../../sim/config/weapons';
 import type { AudioEngine } from '../audio/audio';
 import { keyLabel, type InputManager } from '../input/input';
-import { PALETTES, drawAirframe, drawExhaust } from '../render/aircraftArt';
+import type { RewardLine } from '../rewards';
+import { drawAirframe, drawExhaust } from '../render/aircraftArt';
+import { PAINTS, paintPalette } from '../render/paints';
+import { MAX_UPGRADE_LEVEL, UPGRADES, applyUpgrades, nextUpgradeCost, type UpgradeId } from '../../sim/config/upgrades';
 import { ACTIONS, DEFAULT_BINDINGS, levelFromXp, type Action, type SaveStore } from '../save/save';
 
 export type ScreenId = 'title' | 'main' | 'play' | 'hangar' | 'profile' | 'settings' | 'pause' | 'results' | 'error';
@@ -36,12 +39,16 @@ export interface ResultsData {
   newBest: boolean;
   /** Names of aircraft unlocked during this match. */
   unlocked: string[];
+  /** Itemised XP/credit breakdown. */
+  rewards: RewardLine[];
+  /** Credits balance after this match. */
+  creditsTotal: number;
 }
 
 const LOCK_ICON = `<svg class="lock" viewBox="0 0 16 16" aria-label="Locked" role="img"><rect x="3" y="7" width="10" height="8" rx="1.5" fill="currentColor"/><path d="M5 7V5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>`;
 
 /** Scale used for hangar stat bars (the best value any flyable aircraft reaches). */
-const STAT_SCALE = { boost: 900, cruise: 500, turn: 4, hull: 160, dps: 130, missiles: 8, lock: 1600 };
+const STAT_SCALE = { speed: 1000, turn: 4.2, armor: 230, dps: 170, boost: 4.5, missiles: 11 };
 
 const ACTION_LABELS: Record<Action, string> = {
   up: 'Throttle up', down: 'Throttle down', left: 'Turn anticlockwise', right: 'Turn clockwise',
@@ -74,6 +81,7 @@ export class UI {
   private toastTimer = 0;
   /** Aircraft currently shown in the hangar (any plane can be inspected, locked or not). */
   private hangarSel = '';
+  private hangarTab: 'stats' | 'upgrades' | 'paint' = 'stats';
   /** Ignore activations until this time — screens that appear mid-action (results) must not eat a held key. */
   private guardUntil = 0;
 
@@ -264,14 +272,15 @@ export class UI {
     const prof = this.save.data.profile;
     const best = this.bestLevel();
     if (!this.hangarSel) this.hangarSel = prof.favoriteAircraft;
-    const def = AIRCRAFT[this.hangarSel] ?? AIRCRAFT.viper;
-    const unlocked = isUnlocked(def.id, best);
+    const base = AIRCRAFT[this.hangarSel] ?? AIRCRAFT.viper;
+    const unlocked = isUnlocked(base.id, best);
+    const levels = prof.upgrades[base.id] ?? {};
+    // Stats shown include the upgrades you own for this aircraft.
+    const def = { ...base, ...applyUpgrades(base, levels) };
     const equipped = prof.favoriteAircraft === def.id;
     const gun = GUNS[def.gun];
     const msl = MISSILES[def.missile];
     const ab = ABILITIES[def.ability];
-    const stat = (label: string, v: number, max: number, shown: string | number) =>
-      `<div class="stat"><span>${label}</span><div class="b"><i style="width:${Math.min(100, (v / max) * 100)}%"></i></div><span>${shown}</span></div>`;
     const list = PLAYER_AIRCRAFT.map((id) => {
       const a = AIRCRAFT[id];
       const open = isUnlocked(id, best);
@@ -288,10 +297,50 @@ export class UI {
       : '';
     const lockNote = unlocked ? '' : `<div class="lock-note">
         <b>Locked.</b> Reach <b>level ${def.unlockLevel}</b> in Endless Skies to unlock the ${def.name}.
-        Level ${def.unlockLevel} means surviving until ${def.unlockLevel} opponents come at you at once.
         <span>Your best so far: level ${Math.max(0, best)}.</span></div>`;
+    const tabs = [['stats', 'AIRCRAFT'], ['upgrades', 'UPGRADES'], ['paint', 'PAINT']]
+      .map(([id, l]) => `<button class="${this.hangarTab === id ? 'on' : ''}" data-action="hangar-tab" data-tab="${id}">${l}</button>`).join('');
+    let body = '';
+    if (this.hangarTab === 'stats') {
+      const stat = (label: string, v: number, max: number, shown: string | number) =>
+        `<div class="stat"><span>${label}</span><div class="b"><i style="width:${Math.min(100, (v / max) * 100)}%"></i></div><span>${shown}</span></div>`;
+      const effHull = def.health / (1 - def.armor);
+      const dps = (gun.damage * (def.gunDamageMult ?? 1) * (gun.pellets ?? 1)) / gun.fireInterval;
+      const burn = def.afterburnerCapacity / def.afterburnerDrain;
+      body = `<p class="hangar-desc">${def.description}</p>
+        ${stat('SPEED', def.boostSpeed, STAT_SCALE.speed, Math.round(def.boostSpeed))}
+        ${stat('TURN', def.turnRate, STAT_SCALE.turn, def.turnRate.toFixed(1))}
+        ${stat('ARMOR', effHull, STAT_SCALE.armor, Math.round(effHull))}
+        ${stat('WEAPONS', dps, STAT_SCALE.dps, Math.round(dps))}
+        ${stat('BOOST', burn, STAT_SCALE.boost, `${burn.toFixed(1)}s`)}
+        ${stat('MISSILES', def.missileCapacity, STAT_SCALE.missiles, def.missileCapacity)}
+        <div class="kv" style="margin-top:10px"><span>Primary</span><b>${gun.name}</b></div>
+        <div class="kv"><span>Secondary</span><b>${msl.name} ×${def.missileCapacity}</b></div>
+        <div class="kv"><span>Countermeasure</span><b>Decoy flares ×${def.flareCharges}</b></div>
+        <div class="kv"><span>Ability</span><b>${ab.name}: ${ab.description}</b></div>`;
+    } else if (this.hangarTab === 'upgrades') {
+      body = `<p class="hangar-desc">Upgrades belong to each aircraft and change its real performance.</p>` + UPGRADES.map((u) => {
+        const lv = levels[u.id] ?? 0;
+        const cost = nextUpgradeCost(u.id, lv);
+        const pips = Array.from({ length: MAX_UPGRADE_LEVEL }, (_, i) => `<i class="${i < lv ? 'on' : ''}"></i>`).join('');
+        const btn = !unlocked ? '<span class="tag">LOCKED</span>'
+          : cost === null ? '<span class="tag ok">MAX</span>'
+          : `<button class="buy" data-action="buy-upgrade" data-id="${u.id}" ${prof.credits < cost ? 'disabled' : ''}>${cost} CR</button>`;
+        return `<div class="upg"><div><b>${u.name}</b><span>${u.perLevel}</span></div><div class="pips">${pips}</div>${btn}</div>`;
+      }).join('');
+    } else {
+      body = `<p class="hangar-desc">Paint is cosmetic and applies to whichever aircraft you fly.</p><div class="paints">` + PAINTS.map((pt) => {
+        const owned = prof.paints.includes(pt.id);
+        const applied = prof.paint === pt.id;
+        const sw = [pt.palette.body, pt.palette.bodyDark, pt.palette.accent].map((c) => `<i style="background:${c}"></i>`).join('');
+        const btn = applied ? '<span class="tag ok">APPLIED</span>'
+          : owned ? `<button class="buy" data-action="apply-paint" data-id="${pt.id}">APPLY</button>`
+          : `<button class="buy" data-action="buy-paint" data-id="${pt.id}" ${prof.credits < pt.cost ? 'disabled' : ''}>${pt.cost} CR</button>`;
+        return `<div class="paint ${applied ? 'on' : ''}" data-paint="${pt.id}"><div class="sw">${sw}</div><b>${pt.name}</b>${btn}</div>`;
+      }).join('') + '</div>';
+    }
     return `<div class="screen dim"><div class="center-wrap"><div class="panel wide">
-      <h2>Hangar</h2>
+      <div class="hangar-head"><h2>Hangar</h2><div class="credits">${Math.floor(prof.credits)} <span>CREDITS</span></div></div>
       <div class="hangar">
         <div class="ac-list">${list}</div>
         <div>
@@ -301,18 +350,8 @@ export class UI {
             ${status}
           </div>
           ${lockNote}
-          <p style="color:var(--dim);margin:0 0 12px;font-size:14px">${def.description}</p>
-          ${stat('TOP SPEED', def.boostSpeed, STAT_SCALE.boost, def.boostSpeed)}
-          ${stat('CRUISE', def.cruiseSpeed, STAT_SCALE.cruise, def.cruiseSpeed)}
-          ${stat('TURN RATE', def.turnRate, STAT_SCALE.turn, def.turnRate.toFixed(1))}
-          ${stat('HULL', def.health, STAT_SCALE.hull, def.health)}
-          ${stat('CANNON DPS', gun.damage / gun.fireInterval, STAT_SCALE.dps, Math.round(gun.damage / gun.fireInterval))}
-          ${stat('MISSILES', def.missileCapacity, STAT_SCALE.missiles, def.missileCapacity)}
-          ${stat('LOCK RANGE', def.lockRange, STAT_SCALE.lock, def.lockRange)}
-          <div class="kv" style="margin-top:10px"><span>Primary</span><b>${gun.name}</b></div>
-          <div class="kv"><span>Secondary</span><b>${msl.name} ×${def.missileCapacity}</b></div>
-          <div class="kv"><span>Countermeasure</span><b>Decoy flares ×${def.flareCharges}</b></div>
-          <div class="kv"><span>Ability</span><b>${ab.name}: ${ab.description}</b></div>
+          <div class="tabs">${tabs}</div>
+          ${body}
         </div>
       </div>
       <div class="btn-row"><button class="mbtn" data-action="back">BACK</button></div>
@@ -422,8 +461,10 @@ export class UI {
         ${box(r.deaths, 'Shot down', 4)}${box(Math.round(r.damageDealt), 'Damage dealt', 5)}${box(Math.round(r.damageTaken), 'Damage taken', 6)}${box(`${mm}:${ss}`, 'Time survived', 7)}
       </div>
       ${r.unlocked.length ? `<div class="unlock-banner">New aircraft unlocked: <b>${r.unlocked.map(esc).join(', ')}</b>. Equip it in the Hangar.</div>` : ''}
-      <div class="kv"><span>Cannon accuracy</span><b>${Math.round(r.accuracy * 100)}%</b></div>
-      <div class="kv"><span>Best streak</span><b>${r.bestStreak}</b></div>
+      <div class="rewards">
+        ${r.rewards.map((x) => `<div class="rw"><span>${esc(x.label)}${x.label === 'Time survived' ? '' : ` ×${x.count}`}</span><b>+${x.xp} XP</b><b>+${x.credits} CR</b></div>`).join('')}
+        <div class="rw muted"><span>Cannon accuracy ${Math.round(r.accuracy * 100)}% · best streak ${r.bestStreak}</span><b></b><b>${Math.floor(r.creditsTotal)} CR total</b></div>
+      </div>
       <div class="reward" style="margin-top:16px">
         <div><div class="big">+${r.xpGained} XP</div><div class="l" style="color:var(--dim);font-size:12px">${after.level > before.level ? `RANK UP → ${after.level}` : `RANK ${after.level}`}</div></div>
         <div><div class="big">+${r.creditsGained}</div><div class="l" style="color:var(--dim);font-size:12px">CREDITS</div></div>
@@ -523,6 +564,50 @@ export class UI {
         }
         break;
       }
+      case 'hangar-tab':
+        this.audio.play('uiMove');
+        this.hangarTab = el.dataset.tab as 'stats' | 'upgrades' | 'paint';
+        this.show('hangar', false);
+        this.root.querySelector<HTMLElement>(`[data-action="hangar-tab"][data-tab="${this.hangarTab}"]`)?.focus();
+        break;
+      case 'buy-upgrade': {
+        const prof = this.save.data.profile;
+        const id = el.dataset.id as UpgradeId;
+        const craft = this.hangarSel;
+        if (!isUnlocked(craft, this.bestLevel())) break;
+        const levels = (prof.upgrades[craft] ??= {});
+        const cost = nextUpgradeCost(id, levels[id] ?? 0);
+        if (cost === null || prof.credits < cost) break;
+        prof.credits -= cost;
+        levels[id] = (levels[id] ?? 0) + 1;
+        this.save.save();
+        this.audio.play('uiSelect');
+        this.show('hangar', false);
+        this.toast(`${UPGRADES.find((u) => u.id === id)!.name} upgraded to level ${levels[id]}.`);
+        break;
+      }
+      case 'buy-paint': {
+        const prof = this.save.data.profile;
+        const pt = PAINTS.find((x) => x.id === el.dataset.id);
+        if (!pt || prof.paints.includes(pt.id) || prof.credits < pt.cost) break;
+        prof.credits -= pt.cost;
+        prof.paints.push(pt.id);
+        prof.paint = pt.id;
+        this.save.save();
+        this.audio.play('uiSelect');
+        this.show('hangar', false);
+        this.toast(`${pt.name} paint bought and applied.`);
+        break;
+      }
+      case 'apply-paint': {
+        const prof = this.save.data.profile;
+        if (!prof.paints.includes(el.dataset.id!)) break;
+        prof.paint = el.dataset.id!;
+        this.save.save();
+        this.audio.play('uiSelect');
+        this.show('hangar', false);
+        break;
+      }
       case 'reset-tutorial':
         this.save.data.profile.tutorialDone = false;
         this.save.save();
@@ -577,8 +662,9 @@ export class UI {
       // Slow barrel roll shows the airframe from both sides.
       const roll = Math.cos(t * 0.9);
       const art = (AIRCRAFT[this.hangarSel] ?? AIRCRAFT.viper).art;
-      drawExhaust(ctx, art, PALETTES.blue, 1, Math.sin(t * 0.5) > 0.3, t, false);
-      drawAirframe(ctx, art, PALETTES.blue, { roll, flash: 0, missiles: true, damage: 0 });
+      const pal = paintPalette(this.save.data.profile.paint);
+      drawExhaust(ctx, art, pal, 1, Math.sin(t * 0.5) > 0.3, t, false);
+      drawAirframe(ctx, art, pal, { roll, flash: 0, missiles: true, damage: 0 });
       this.previewRaf = requestAnimationFrame(frame);
     };
     this.previewRaf = requestAnimationFrame(frame);
