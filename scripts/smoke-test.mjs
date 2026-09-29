@@ -147,12 +147,21 @@ try {
   });
   check(def.flares < def.max || !((await state()).alive), 'flares deployed');
   check(def.abilityCd > 0 || !((await state()).alive), 'ability activated');
+  // On-screen FLARES button (mouse/touch).
+  await wait(700); // flare re-deploy cooldown
+  const before = await page.evaluate(() => window.aerovant.session.local().flareCharges);
+  check(await page.isVisible('.flare-btn'), 'on-screen FLARES button visible in match');
+  await page.click('.flare-btn');
+  await wait(150);
+  const after = await page.evaluate(() => window.aerovant.session.local().flareCharges);
+  check(before === 0 || after === before - 1, `FLARES button deploys flares (${before} -> ${after})`);
   await shot('10-flares-ability');
 
   // Pause menu.
   await page.keyboard.press('Escape');
   await wait(400);
   check((await state()).screen === 'pause', 'pause menu opens with Esc');
+  check(!(await page.isVisible('.flare-btn')), 'FLARES button hidden while paused');
   await shot('11-pause');
   await page.keyboard.press('Escape');
   await wait(300);

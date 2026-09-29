@@ -38,11 +38,10 @@ Flying needs only two buttons: `←` rotates the nose anticlockwise and `→` cl
 Hold one and the jet keeps turning, flying a full loop. Let go and it flies straight.
 Keys can be remapped in **Settings → Controls**.
 
-**Beating missiles:** a lone turn won't shake a missile from dead astern. Either drop
-flares, or light the afterburner and break hard when the missile is roughly 250–1000
-units out (the warning shows the distance). If you break too early, it re-acquires you.
-If you break too late, it hits. Out-running it with the burner early also works: a missile
-that burns out fizzles harmlessly. These rules are locked in by
+**Missiles:** without a lock, a missile flies straight and grabs the first enemy that
+comes within range in front of it. Once it has a target it chases for up to 10 seconds;
+if it hasn't hit by then it pops harmlessly and disappears. Flares (`F` or the on-screen
+**FLARES** button) pull a chasing missile onto the decoys. These rules are covered by
 `tests/missile-balance.test.ts`.
 
 ## Architecture

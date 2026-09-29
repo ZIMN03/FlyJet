@@ -54,7 +54,7 @@ export class World {
     for (let i = 0; i < MAX_MISSILES; i++) {
       this.missiles.push({
         active: false, id: 0, def: MISSILES.lanceMissile, x: 0, y: 0, px: 0, py: 0, heading: 0, speed: 0,
-        life: 0, age: 0, ownerId: 0, team: 0, targetId: 0, flareTarget: -1,
+        life: 0, age: 0, ownerId: 0, team: 0, targetId: 0, flareTarget: -1, chaseLeft: -1,
       });
     }
     for (let i = 0; i < MAX_FLARES; i++) {

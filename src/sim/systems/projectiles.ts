@@ -62,11 +62,30 @@ export function updateMissiles(world: World, dt: number): void {
     m.px = m.x;
     m.py = m.y;
     m.age += dt;
-    m.life -= dt;
     const d = m.def;
     const armed = m.age >= d.armTime;
 
-    if (armed) steerMissile(world, m, dt);
+    if (m.chaseLeft >= 0) {
+      // Chasing: follows its target for chaseTime seconds, then gives up.
+      m.chaseLeft -= dt;
+      if (m.chaseLeft <= 0) {
+        fizzleMissile(world, m);
+        continue;
+      }
+    } else {
+      // Searching: flies straight until an enemy comes into range ahead.
+      m.life -= dt;
+      if (armed) acquireTarget(world, m);
+      if (m.chaseLeft < 0 && m.life <= 0) {
+        fizzleMissile(world, m);
+        continue;
+      }
+    }
+
+    if (armed && !steerMissile(world, m, dt)) {
+      fizzleMissile(world, m);
+      continue;
+    }
 
     m.speed = Math.min(d.maxSpeed, m.speed + d.acceleration * dt);
     m.x += Math.cos(m.heading) * m.speed * dt;
@@ -76,68 +95,74 @@ export function updateMissiles(world: World, dt: number): void {
       explodeMissile(world, m);
       continue;
     }
-    if (armed && checkProximity(world, m)) {
-      explodeMissile(world, m);
-      continue;
-    }
-    if (m.life <= 0) fizzleMissile(world, m);
+    if (armed && checkProximity(world, m)) explodeMissile(world, m);
   }
 }
 
 /**
- * Fuel burnout: the missile self-destructs harmlessly. Out-running a missile
- * is a deliberate counter, so it must not still deal splash damage at the end.
+ * A missile that runs out of chase time (or search time) pops harmlessly and
+ * disappears — it never deals splash damage when it misses.
  */
 function fizzleMissile(world: World, m: Missile): void {
   m.active = false;
   world.emit({ type: 'missileExplode', missileId: m.id, x: m.x, y: m.y, radius: 0, water: false });
 }
 
-function steerMissile(world: World, m: Missile, dt: number): void {
+/** Pick the closest enemy within acquire range and inside the forward cone. */
+function acquireTarget(world: World, m: Missile): void {
+  const d = m.def;
+  let best = 0;
+  let bestDist = d.acquireRange;
+  for (const a of world.aircraft) {
+    if (!a.alive || a.id === m.ownerId) continue;
+    if (!world.friendlyFire && a.team === m.team) continue;
+    const dx = a.x - m.x;
+    const dy = a.y - m.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist >= bestDist) continue;
+    if (Math.abs(angleDiff(m.heading, Math.atan2(dy, dx))) > d.acquireCone) continue;
+    best = a.id;
+    bestDist = dist;
+  }
+  if (best) {
+    m.targetId = best;
+    m.chaseLeft = d.chaseTime;
+  }
+}
+
+/**
+ * Turn toward the current target (a decoy flare takes priority). Returns false
+ * when the missile has lost what it was chasing and should disappear.
+ */
+function steerMissile(world: World, m: Missile, dt: number): boolean {
   const d = m.def;
   let tx = 0;
   let ty = 0;
   let tvx = 0;
   let tvy = 0;
-  let tracking = false;
 
   if (m.flareTarget >= 0) {
     const f = world.flares[m.flareTarget];
-    if (f.active) {
-      tx = f.x; ty = f.y; tvx = f.vx; tvy = f.vy;
-      tracking = true;
-    } else {
-      // Decoy burnt out: seeker is blind now. The original target stays safe.
-      m.flareTarget = -1;
-      m.targetId = 0;
-    }
+    // Decoy burnt out: the spoofed seeker gives up and the missile disappears.
+    if (!f.active) return false;
+    tx = f.x; ty = f.y; tvx = f.vx; tvy = f.vy;
   } else if (m.targetId) {
     const t = world.getAircraft(m.targetId);
-    if (!t || !t.alive) {
-      m.targetId = 0;
-    } else {
-      tx = t.x; ty = t.y; tvx = t.vx; tvy = t.vy;
-      tracking = true;
-    }
+    // Target already destroyed: nothing left to chase.
+    if (!t || !t.alive) return false;
+    tx = t.x; ty = t.y; tvx = t.vx; tvy = t.vy;
+  } else {
+    return true; // still searching, fly straight
   }
-  if (!tracking) return;
 
-  const dx = tx - m.x;
-  const dy = ty - m.y;
-  const dist = Math.hypot(dx, dy);
-  // Seeker gimbal limit: if the target gets outside the cone (e.g. after a hard
-  // break turn makes the missile overshoot) the lock is lost permanently.
-  const los = Math.atan2(dy, dx);
-  if (m.flareTarget < 0 && Math.abs(angleDiff(m.heading, los)) > d.seekerCone) {
-    m.targetId = 0;
-    return;
-  }
+  const dist = Math.hypot(tx - m.x, ty - m.y);
   const tGo = dist / Math.max(m.speed, 1);
   const aimX = tx + tvx * tGo * d.lead;
   const aimY = ty + tvy * tGo * d.lead;
   const desired = Math.atan2(aimY - m.y, aimX - m.x);
   const maxTurn = d.turnRate * dt;
   m.heading += clamp(angleDiff(m.heading, desired), -maxTurn, maxTurn);
+  return true;
 }
 
 function checkProximity(world: World, m: Missile): boolean {

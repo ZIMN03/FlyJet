@@ -41,6 +41,8 @@ export class Game {
   private matchTime = 0;
   private resultsShown = false;
   private tip = '';
+  private readonly flareBtn: HTMLButtonElement;
+  private flareBtnState = '';
 
   constructor(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     this.input = new InputManager(this.save.data.settings.bindings);
@@ -49,6 +51,7 @@ export class Game {
     this.fx.onSlowmo = (d, s) => this.session?.slowmo(d, s);
     this.ui = new UI(uiRoot, this.save, this.audio, this.input, (a) => this.onUiAction(a));
     this.attract = new AttractSession();
+    this.flareBtn = this.createFlareButton();
     this.applySettings();
 
     window.addEventListener('resize', () => this.renderer.resize());
@@ -89,6 +92,41 @@ export class Game {
     this.ui.show('title');
     if (this.save.recovered) this.ui.toast('Save data was corrupted and has been reset. A backup was kept.');
     requestAnimationFrame((t) => this.frame(t));
+  }
+
+  /** On-screen FLARES button (mouse or touch), mirroring the flare key. */
+  private createFlareButton(): HTMLButtonElement {
+    const b = document.createElement('button');
+    b.className = 'flare-btn';
+    b.type = 'button';
+    b.tabIndex = -1; // never takes keyboard focus, so Space/Enter can't trigger it
+    b.hidden = true;
+    b.setAttribute('aria-label', 'Deploy flares');
+    b.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      this.audio.unlock();
+      this.input.virtualPress('flare');
+      b.classList.remove('pop');
+      void b.offsetWidth;
+      b.classList.add('pop');
+    });
+    document.body.appendChild(b);
+    return b;
+  }
+
+  private updateFlareButton(): void {
+    const s = this.session;
+    const me = s?.local();
+    const show = this.state === 'match' && !!s && !s.paused && !this.ui.visible;
+    const charges = me && me.alive ? me.flareCharges : 0;
+    const max = me ? me.def.flareCharges : 0;
+    const key = `${show}|${charges}|${max}|${me?.alive}|${this.input.label('flare')}`;
+    if (key === this.flareBtnState) return;
+    this.flareBtnState = key;
+    this.flareBtn.hidden = !show;
+    this.flareBtn.disabled = charges <= 0;
+    const pips = Array.from({ length: max }, (_, i) => `<i class="${i < charges ? 'on' : ''}"></i>`).join('');
+    this.flareBtn.innerHTML = `<span class="label">FLARES</span><span class="pips">${pips}</span><span class="key">${this.input.label('flare')}</span>`;
   }
 
   private applySettings(): void {
@@ -319,6 +357,7 @@ export class Game {
         }
       : null;
     this.renderer.render(session.world, session.alpha, this.time, fdt, this.fx, hudView);
+    this.updateFlareButton();
   }
 
   private updateMatchAudio(session: MatchSession, dt: number): void {

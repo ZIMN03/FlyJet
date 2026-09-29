@@ -181,6 +181,8 @@ export interface Missile {
   targetId: number;
   /** Flare index being tracked, or -1. Flares take priority over targetId. */
   flareTarget: number;
+  /** Seconds of chase left once a target is acquired; < 0 while still searching. */
+  chaseLeft: number;
 }
 
 export interface Flare {

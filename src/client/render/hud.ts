@@ -331,7 +331,7 @@ export class Hud {
       ctx.fill();
       ctx.restore();
       if (blink || me.incomingMissileDist < 400) {
-        this.warningLabel(ctx, W / 2, H * 0.24, '▲ MISSILE ▲', `${Math.round(me.incomingMissileDist)} m — flares [${v.keyLabel('flare')}] or boost + break`, COL.danger, u);
+        this.warningLabel(ctx, W / 2, H * 0.24, '▲ MISSILE ▲', `${Math.round(me.incomingMissileDist)} m — press FLARES [${v.keyLabel('flare')}]`, COL.danger, u);
       }
       ctx.strokeStyle = `rgba(255,40,40,${0.25 + (blink ? 0.2 : 0)})`;
       ctx.lineWidth = 10 * u;

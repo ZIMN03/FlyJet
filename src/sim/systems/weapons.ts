@@ -139,8 +139,11 @@ function launchMissile(world: World, a: Aircraft): void {
   m.ownerId = a.id;
   m.team = a.team;
   // Only a full lock produces a guided missile; otherwise it's dumb-fired.
+  // A full lock gives the missile its target immediately; otherwise it flies
+  // straight and picks up the first enemy that comes within range ahead of it.
   m.targetId = a.lockState === LockState.Locked ? a.lockTargetId : 0;
   m.flareTarget = -1;
+  m.chaseLeft = m.targetId ? d.chaseTime : -1;
   a.missileAmmo--;
   a.missileCooldown = a.def.missileCooldown;
   a.spawnProtection = 0;

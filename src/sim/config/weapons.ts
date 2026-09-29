@@ -27,11 +27,16 @@ export interface MissileDef {
   maxSpeed: number;
   /** Max turn rate, rad/s. Deliberately lower than aircraft so missiles are dodgeable. */
   turnRate: number;
+  /** Seconds a missile flies straight looking for a target before it fizzles out. */
   lifetime: number;
+  /** Once it has a target, it chases for this long; no hit by then = it disappears harmlessly. */
+  chaseTime: number;
+  /** An enemy this close, inside the acquire cone, becomes the missile's target. */
+  acquireRange: number;
+  /** Half-angle in front of the missile in which it can pick up a target, radians. */
+  acquireCone: number;
   /** Delay before guidance and fuse activate. */
   armTime: number;
-  /** If the target leaves this half-angle cone, the seeker loses it for good. */
-  seekerCone: number;
   proximityFuse: number;
   /** Guidance lead factor (0 = pure pursuit, 1 = full lead). */
   lead: number;
@@ -72,16 +77,16 @@ export const MISSILES: Record<string, MissileDef> = {
     blastRadius: 62,
     launchBoost: 90,
     acceleration: 1000,
-    // Tuned with tests/missile-balance.test.ts: a timed break turn or an early
-    // afterburner run beats it; doing nothing does not.
     maxSpeed: 800,
     turnRate: 1.8,
-    lifetime: 3.4,
+    lifetime: 4,
+    chaseTime: 10,
+    acquireRange: 650,
+    acquireCone: 1.1,
     armTime: 0.18,
-    seekerCone: 0.8,
     proximityFuse: 12,
     lead: 0.1,
-    flareSusceptibleRange: 1100,
+    flareSusceptibleRange: 1800,
   },
   hornetRocket: {
     id: 'hornetRocket',
@@ -92,11 +97,13 @@ export const MISSILES: Record<string, MissileDef> = {
     acceleration: 900,
     maxSpeed: 760,
     turnRate: 1.7,
-    lifetime: 3.2,
+    lifetime: 4,
+    chaseTime: 10,
+    acquireRange: 600,
+    acquireCone: 1.0,
     armTime: 0.2,
-    seekerCone: 0.8,
     proximityFuse: 12,
     lead: 0,
-    flareSusceptibleRange: 1100,
+    flareSusceptibleRange: 1800,
   },
 };

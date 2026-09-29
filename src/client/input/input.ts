@@ -141,6 +141,12 @@ export class InputManager {
     return this.tapLatch.has(a) || this.isDown(a);
   }
 
+  /** Press an action from an on-screen button (click/tap); behaves like a key tap. */
+  virtualPress(a: Action): void {
+    this.pressedQueue.add(a);
+    this.tapLatch.add(a);
+  }
+
   /** True once per physical press. */
   consumePressed(a: Action): boolean {
     const had = this.pressedQueue.has(a);

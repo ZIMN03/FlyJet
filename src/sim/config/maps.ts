@@ -88,7 +88,7 @@ export const MAPS: Record<string, MapDef> = {
     ],
     tips: [
       'Brake while turning to tighten your turn radius — at the cost of speed.',
-      'Missiles turn slower than you. Light the afterburner and break hard as one closes in to make it overshoot.',
+      'A missile chases its target for 10 seconds. Flares are the surest way to shake one.',
       'Flares break locks and pull in missiles that are already tracking you.',
       'Diving trades altitude for speed. Climbing does the opposite.',
       'Sea stacks make excellent missile shields.',

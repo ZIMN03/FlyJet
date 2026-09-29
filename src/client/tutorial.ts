@@ -19,7 +19,7 @@ const STEPS: Step[] = [
     done: (t) => t.steerTime > 1.6,
   },
   {
-    id: 'flare', text: 'MISSILE INCOMING — drop flares, or boost + break hard when it gets close', required: false,
+    id: 'flare', text: 'MISSILE ON YOUR TAIL — it chases for 10 seconds. Hit FLARES!', required: false,
     keys: (i) => i.labels('flare'),
     when: (a) => a.incomingMissileDist < 1400,
     done: (_t, a) => a.flareCharges < a.def.flareCharges,
