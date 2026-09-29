@@ -46,7 +46,7 @@ const ROSTER = [
 ];
 
 const ACTION_LABELS: Record<Action, string> = {
-  up: 'Steer up', down: 'Steer down', left: 'Steer left', right: 'Steer right',
+  up: 'Menu up', down: 'Menu down', left: 'Turn anticlockwise', right: 'Turn clockwise',
   fire: 'Fire cannons', missile: 'Launch missile', flare: 'Deploy flares', boost: 'Afterburner',
   brake: 'Air brake', ability: 'Special ability', pause: 'Pause / back',
 };
@@ -342,7 +342,7 @@ export class UI {
       body = ACTIONS.map((a) => `<div class="row"><span>${ACTION_LABELS[a]}</span><span>${
         s.bindings[a].map((code, i) => `<button class="keycap" data-action="rebind" data-bind="${a}" data-slot="${i}">${keyLabel(code)}</button>`).join('')
       }</span><span></span></div>`).join('') +
-        `<div class="row"><span>Gamepad</span><span style="color:var(--dim);font-size:13px">Stick steer · RT/A fire · X missile · B/LB flares · RB boost · LT brake · Y ability</span><span></span></div>` +
+        `<div class="row"><span>Gamepad</span><span style="color:var(--dim);font-size:13px">Stick left/right turn · RT/A fire · X missile · B/LB flares · RB boost · LT brake · Y ability</span><span></span></div>` +
         `<div class="btn-row"><button class="mbtn" data-action="reset-bindings">RESET TO DEFAULTS</button></div>`;
     } else if (tab === 'gameplay') {
       body = `<div class="row"><label for="s-callsign">Callsign</label><input id="s-callsign" type="text" maxlength="16" data-setting="callsign" value="${esc(this.save.data.profile.callsign)}"><span></span></div>` +
@@ -376,7 +376,7 @@ export class UI {
         <button class="mbtn" data-action="quit">QUIT TO MENU</button>
       </div>
       <div class="panel side" style="width:380px"><h2>Controls</h2><div class="controls-ref" style="grid-template-columns:1fr">
-        <div><span>Steer</span><b>${esc(i.labels('up'))} · ${esc(i.labels('left'))} · ${esc(i.labels('down'))} · ${esc(i.labels('right'))}</b></div>${ref}
+        <div><span>Turn</span><b>${esc(i.labels('left'))} · ${esc(i.labels('right'))}</b></div>${ref}
       </div></div>
     </div></div>`;
   }

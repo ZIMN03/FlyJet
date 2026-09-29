@@ -19,6 +19,7 @@ const BOOST_ACCEL_MULT = 1.7;
 export function sanitizeCommand(cmd: InputCommand): void {
   if (!Number.isFinite(cmd.steerX)) cmd.steerX = 0;
   if (!Number.isFinite(cmd.steerY)) cmd.steerY = 0;
+  cmd.turn = Number.isFinite(cmd.turn) ? clamp(cmd.turn, -1, 1) : 0;
   const m = Math.hypot(cmd.steerX, cmd.steerY);
   if (m > 1) {
     cmd.steerX /= m;
@@ -56,11 +57,17 @@ export function updateFlight(world: World, a: Aircraft, cmd: InputCommand, dt: n
   a.braking = (cmd.buttons & Button.Brake) !== 0 && !a.boosting;
 
   // --- Turning ---
+  let turnRate = def.turnRate;
+  if (a.boosting) turnRate *= def.boostTurnPenalty;
+  if (a.braking) turnRate *= def.brakeTurnBonus;
   const steerMag = Math.hypot(cmd.steerX, cmd.steerY);
-  if (steerMag > STEER_DEADZONE) {
-    let turnRate = def.turnRate;
-    if (a.boosting) turnRate *= def.boostTurnPenalty;
-    if (a.braking) turnRate *= def.brakeTurnBonus;
+  if (Math.abs(cmd.turn) > STEER_DEADZONE) {
+    // Rotation controls: holding a direction keeps turning, so the aircraft
+    // flies full loops for as long as the button is held.
+    a.heading += cmd.turn * turnRate * dt;
+    if (a.heading > Math.PI) a.heading -= Math.PI * 2;
+    else if (a.heading < -Math.PI) a.heading += Math.PI * 2;
+  } else if (steerMag > STEER_DEADZONE) {
     const target = Math.atan2(cmd.steerY, cmd.steerX);
     let diff = angleDiff(a.heading, target);
     if (Math.abs(diff) > Math.PI - REVERSAL_THRESHOLD) {

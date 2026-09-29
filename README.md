@@ -25,7 +25,7 @@ npm run dev        # http://localhost:5173
 
 | Action           | Keyboard            | Gamepad      |
 | ---------------- | ------------------- | ------------ |
-| Steer            | `W A S D` / arrows  | Left stick   |
+| Turn             | `←` `→` (or `A` `D`)| Left stick ←→|
 | Fire cannons     | `Space` / `J`       | RT / A       |
 | Launch missile   | `E` / `K`           | X            |
 | Deploy flares    | `F` / `L`           | B / LB       |
@@ -34,8 +34,8 @@ npm run dev        # http://localhost:5173
 | Special ability  | `Q` / `O`           | Y            |
 | Pause / back     | `Esc` / `P`         | Start        |
 
-Steering is direction-based: the nose turns toward the direction you hold at a limited
-turn rate, so you always carry momentum and a reversal loops up and over.
+Flying needs only two buttons: `←` rotates the nose anticlockwise and `→` clockwise.
+Hold one and the jet keeps turning, flying a full loop. Let go and it flies straight.
 Keys can be remapped in **Settings → Controls**.
 
 **Beating missiles:** a lone turn won't shake a missile from dead astern. Either drop

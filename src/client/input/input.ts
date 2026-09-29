@@ -156,26 +156,23 @@ export class InputManager {
   /** Build the command for the local aircraft for this tick. */
   sampleCommand(): InputCommand {
     const c = this.cmd;
-    let sx = (this.keyAction('right') ? 1 : 0) - (this.keyAction('left') ? 1 : 0);
-    let sy = (this.keyAction('down') ? 1 : 0) - (this.keyAction('up') ? 1 : 0);
+    // Two-button flying: only left/right matter. Left rotates the nose
+    // anticlockwise, right clockwise; holding one loops all the way around.
+    let turn = (this.keyAction('right') ? 1 : 0) - (this.keyAction('left') ? 1 : 0);
     const p = this.pad();
     if (p) {
       const ax = p.axes[0] ?? 0;
-      const ay = p.axes[1] ?? 0;
-      if (Math.hypot(ax, ay) > STICK_DEADZONE) {
-        sx = ax;
-        sy = ay;
+      if (Math.abs(ax) > STICK_DEADZONE) {
+        turn = ax;
         this.lastDevice = 'gamepad';
       } else {
-        if (this.padAction(p, 'right')) sx = 1;
-        if (this.padAction(p, 'left')) sx = -1;
-        if (this.padAction(p, 'down')) sy = 1;
-        if (this.padAction(p, 'up')) sy = -1;
+        if (this.padAction(p, 'right')) turn = 1;
+        if (this.padAction(p, 'left')) turn = -1;
       }
     }
-    const m = Math.hypot(sx, sy);
-    c.steerX = m > 1 ? sx / m : sx;
-    c.steerY = m > 1 ? sy / m : sy;
+    c.steerX = 0;
+    c.steerY = 0;
+    c.turn = Math.max(-1, Math.min(1, turn));
     let b = 0;
     if (this.held('fire')) b |= Button.Fire;
     if (this.held('missile')) b |= Button.Missile;

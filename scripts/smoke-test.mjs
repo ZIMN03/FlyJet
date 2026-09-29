@@ -84,15 +84,17 @@ try {
   const startX = s.x;
   const startY = s.y;
 
-  // Fly: steer up-right while boosting, then turn around.
-  await page.keyboard.down('KeyD');
+  // Fly: hold the right arrow while boosting — the aircraft keeps rotating.
+  const h0 = s.heading;
+  await page.keyboard.down('ArrowRight');
   await page.keyboard.down('ShiftLeft');
   await wait(1200);
   await page.keyboard.up('ShiftLeft');
-  await page.keyboard.up('KeyD');
+  await page.keyboard.up('ArrowRight');
   s = await state();
   const moved = Math.hypot(s.x - startX, s.y - startY);
   check(moved > 250, `aircraft flew under keyboard control (moved ${Math.round(moved)} units)`);
+  check(Math.abs(s.heading - h0) > 0.3, 'right arrow rotated the aircraft');
   await shot('07-flying');
 
   // Hunt the enemy: steer toward it each 100ms while firing and launching missiles.
@@ -104,14 +106,17 @@ try {
       const me = s.local();
       const e = s.world.aircraft.find((a) => a.alive && a.team !== me.team);
       if (!me || !me.alive || !e) return null;
-      return { dx: e.x - me.x, dy: e.y - me.y, lock: me.lockState };
+      let d = Math.atan2(e.y - me.y, e.x - me.x) - me.heading;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      return { d, lock: me.lockState };
     });
-    for (const k of ['KeyW', 'KeyA', 'KeyS', 'KeyD']) await page.keyboard.up(k);
+    await page.keyboard.up('ArrowLeft');
+    await page.keyboard.up('ArrowRight');
     if (tgt) {
-      if (tgt.dx > 80) await page.keyboard.down('KeyD');
-      if (tgt.dx < -80) await page.keyboard.down('KeyA');
-      if (tgt.dy > 80) await page.keyboard.down('KeyS');
-      if (tgt.dy < -80) await page.keyboard.down('KeyW');
+      // Only left/right: rotate toward the enemy.
+      if (tgt.d > 0.08) await page.keyboard.down('ArrowRight');
+      if (tgt.d < -0.08) await page.keyboard.down('ArrowLeft');
       await page.keyboard.down('Space');
       if (tgt.lock === 3) {
         if (!lockedShot) { await shot('08b-locked'); lockedShot = true; }
@@ -124,7 +129,8 @@ try {
     if (s.kills >= 1) fought = true;
   }
   await page.keyboard.up('Space');
-  for (const k of ['KeyW', 'KeyA', 'KeyS', 'KeyD']) await page.keyboard.up(k);
+  await page.keyboard.up('ArrowLeft');
+  await page.keyboard.up('ArrowRight');
   s = await state();
   console.log('  after combat:', JSON.stringify(s));
   check(s.shots > 20, `guns fired (${s.shots} shots, ${s.hits} hits)`);

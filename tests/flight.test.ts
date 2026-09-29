@@ -24,6 +24,35 @@ describe('flight model', () => {
     expect(Math.abs(Math.abs(p.heading) - Math.PI)).toBeLessThan(0.05);
   });
 
+  it('holding a turn rotates continuously through a full loop', () => {
+    const { world, p } = duelSetup();
+    p.y = p.py = 1200;
+    const cmds = new Map([[p.id, cmd({ turn: -1 })]]);
+    let total = 0;
+    let prev = p.heading;
+    const loopTime = (Math.PI * 2) / p.def.turnRate;
+    for (let i = 0; i < Math.ceil(loopTime * 60); i++) {
+      stepWorld(world, cmds);
+      let d = p.heading - prev;
+      if (d > Math.PI) d -= Math.PI * 2;
+      if (d < -Math.PI) d += Math.PI * 2;
+      total += d;
+      prev = p.heading;
+    }
+    // Anticlockwise on screen = negative rotation in the y-down world; one full turn.
+    expect(total).toBeLessThan(-Math.PI * 2 * 0.97);
+    expect(p.alive).toBe(true);
+  });
+
+  it('clockwise turn rotates the other way and releasing holds the heading', () => {
+    const { world, p } = duelSetup();
+    run(world, 0.3, new Map([[p.id, cmd({ turn: 1 })]]));
+    const h = p.heading;
+    expect(h).toBeGreaterThan(0.5);
+    run(world, 0.5);
+    expect(p.heading).toBeCloseTo(h, 5);
+  });
+
   it('a full reversal loops over the top (climbs, never dives)', () => {
     const { world, p } = duelSetup();
     const startY = p.y;
@@ -61,8 +90,9 @@ describe('flight model', () => {
   });
 
   it('sanitises hostile/garbage commands', () => {
-    const c = cmd({ steerX: NaN, steerY: 50, buttons: 0xffff });
+    const c = cmd({ steerX: NaN, steerY: 50, turn: 9, buttons: 0xffff });
     sanitizeCommand(c);
+    expect(c.turn).toBe(1);
     expect(c.steerX).toBe(0);
     expect(Math.hypot(c.steerX, c.steerY)).toBeLessThanOrEqual(1 + 1e-9);
     expect(c.buttons).toBe(0x3f);

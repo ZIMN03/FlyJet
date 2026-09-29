@@ -14,8 +14,8 @@ interface Step {
 
 const STEPS: Step[] = [
   {
-    id: 'steer', text: 'Steer — your nose follows the direction you hold', required: true,
-    keys: (i) => `${i.label('up')}${i.label('left')}${i.label('down')}${i.label('right')}  or  ↑←↓→`,
+    id: 'steer', text: 'Turn — hold to keep rotating and loop all the way around', required: true,
+    keys: () => '←  →',
     done: (t) => t.steerTime > 1.6,
   },
   {
@@ -69,7 +69,7 @@ export class TutorialTracker {
   update(dt: number, a: Aircraft | undefined, input: InputManager): void {
     if (!this.enabled || this.finished || !a || !a.alive) return;
     this.elapsed += dt;
-    const c = input.isDown('up') || input.isDown('down') || input.isDown('left') || input.isDown('right');
+    const c = input.isDown('left') || input.isDown('right');
     if (c) this.steerTime += dt;
     if (a.boosting) this.boostTime += dt;
     if (a.braking) this.brakeTime += dt;

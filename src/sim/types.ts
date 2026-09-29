@@ -23,13 +23,19 @@ export interface InputCommand {
   /** Desired flight direction; magnitude <= 1. (0,0) = hold current heading. */
   steerX: number;
   steerY: number;
+  /**
+   * Relative rotation: -1 = rotate the nose anticlockwise, +1 = clockwise, at
+   * the aircraft's turn rate. When non-zero it overrides steerX/steerY. This is
+   * what the two-button (left/right) control scheme sends.
+   */
+  turn: number;
   buttons: number;
   /** Client sequence number for reconciliation (unused offline). */
   seq: number;
 }
 
 export function emptyCommand(): InputCommand {
-  return { steerX: 0, steerY: 0, buttons: 0, seq: 0 };
+  return { steerX: 0, steerY: 0, turn: 0, buttons: 0, seq: 0 };
 }
 
 export const enum LockState {
