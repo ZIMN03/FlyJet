@@ -1,0 +1,21 @@
+{
+  "name": "aerovant",
+  "private": true,
+  "version": "0.1.0",
+  "description": "AEROVANT — an original 2D arcade fighter-jet combat game",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "smoke": "node scripts/smoke-test.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1",
+    "typescript": "^5.9.0",
+    "vite": "^7.1.0",
+    "vitest": "^3.2.0"
+  }
+}
