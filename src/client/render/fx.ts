@@ -30,6 +30,8 @@ const SHAKE_RANGE = 1600;
 
 interface Fragment { x: number; y: number; vx: number; vy: number; life: number; color: number }
 export interface Pilot { x: number; y: number; vx: number; vy: number; t: number; team: number }
+/** A scheduled secondary explosion (multi-stage blasts, boss death sequences). */
+interface Delayed { t: number; x: number; y: number; scale: number; big: boolean }
 
 function rand(a: number, b: number): number {
   return a + Math.random() * (b - a);
@@ -43,6 +45,7 @@ function rand(a: number, b: number): number {
 export class FxDirector {
   readonly fragments: Fragment[] = [];
   readonly pilots: Pilot[] = [];
+  private readonly delayed: Delayed[] = [];
   /** Per-aircraft hit-flash timers (seconds), read by the renderer. */
   readonly flash = new Map<number, number>();
   /** Callback for brief slow-motion on big moments (offline only). */
@@ -67,6 +70,7 @@ export class FxDirector {
   reset(): void {
     this.fragments.length = 0;
     this.pilots.length = 0;
+    this.delayed.length = 0;
     this.flash.clear();
     this.ps.clear();
   }
@@ -173,6 +177,10 @@ export class FxDirector {
         break;
       case 'destroyed': {
         const a = world.getAircraft(e.id);
+        if (a?.def.boss) {
+          this.bossDestruction(e.x, e.y, a.def.radius, a.def.name);
+          break;
+        }
         this.destruction(e.x, e.y, e.vx, e.vy, a);
         this.sfx('explosionBig', e.x, e.y);
         this.shakeFrom(e.x, e.y, TRAUMA.destroyNear);
@@ -218,13 +226,63 @@ export class FxDirector {
         }
         break;
       }
+      case 'stageStart':
+        if (e.stage === 1) {
+          this.hud?.banner(`LEVEL ${e.level}`, 'Sector engaged', 2.2, 'wave');
+          this.sfx('levelStart');
+        }
+        break;
+      case 'contact': {
+        const side = Math.cos(e.bearing) > 0 ? 'EAST' : 'WEST';
+        this.hud?.banner('RADAR CONTACT', `${e.count} bandit${e.count > 1 ? 's' : ''} inbound from the ${side.toLowerCase()}`, 2.4, 'warn');
+        this.hud?.contact(e.bearing);
+        this.sfx('contact');
+        break;
+      }
       case 'waveStart':
-        this.hud?.banner(`LEVEL ${e.wave}`, `${e.enemies} opponent${e.enemies > 1 ? 's' : ''} inbound`, 2.2, 'wave');
-        this.sfx('waveStart');
         break;
       case 'waveClear':
-        this.hud?.banner('LEVEL CLEARED', `+${e.bonus}  ·  Hull repaired  ·  Missiles restocked`, 2.4, 'good');
+        this.hud?.banner('WAVE CLEARED', `+${e.bonus}  ·  Hull patched  ·  Missiles restocked`, 2.2, 'good');
         this.sfx('waveClear');
+        break;
+      case 'bossIncoming':
+        this.hud?.banner(`WARNING: ${e.name}`, 'Heavy contact approaching', e.seconds, 'boss');
+        this.sfx('bossWarning');
+        this.cam.addTrauma(0.15);
+        break;
+      case 'bossPhase': {
+        const b = world.getAircraft(e.id);
+        this.hud?.banner(e.phase >= 4 ? 'CRITICAL' : `PHASE ${e.phase}`, b?.godMode ? 'Shield up: hold fire, reposition' : 'Attack pattern changing', 1.8, 'warn');
+        this.sfx('shield', b?.x, b?.y);
+        if (b) this.ps.spawn(PK.Ring, b.x, b.y, 0, 0, 0.6, 20, b.def.radius * 3, C.orange, 0, 0, 1);
+        break;
+      }
+      case 'levelComplete': {
+        const mm = Math.floor(e.time / 60);
+        const ss = String(Math.floor(e.time % 60)).padStart(2, '0');
+        this.hud?.banner(`LEVEL ${e.level} COMPLETE`, `+${e.bonus} bonus  ·  ${mm}:${ss}  ·  Fully repaired and rearmed`, 4.2, 'wave');
+        this.sfx('levelComplete');
+        break;
+      }
+      case 'missileEvaded':
+        if (e.id === local) {
+          this.hud?.notice(e.decoyed ? 'MISSILE DECOYED' : 'MISSILE EVADED', '+20 XP');
+          this.sfx('evaded');
+        }
+        break;
+      case 'collision':
+        this.explosion(e.x, e.y, 0.45, false);
+        this.sfx('collision', e.x, e.y);
+        if (e.a === local || e.b === local) {
+          this.cam.addTrauma(0.55);
+          this.hud?.banner('MID-AIR COLLISION', 'Both aircraft damaged', 1.4, 'warn');
+        } else this.shakeFrom(e.x, e.y, 0.3);
+        break;
+      case 'overheat':
+        if (e.id === local) {
+          this.hud?.banner('GUNS OVERHEATED', 'Let them cool', 1.2, 'warn');
+          this.sfx('overheat');
+        }
         break;
       case 'matchEnd':
         break;
@@ -257,6 +315,12 @@ export class FxDirector {
       ps.spawn(PK.Spark, x, y, Math.cos(a) * s, Math.sin(a) * s, rand(0.3, 0.6), 2, 0.6, C.spark, 2, 320);
     }
     ps.spawn(PK.Ring, x, y, 0, 0, 0.4, 12, 150 * scale, C.white, 0, 0, 0.8);
+    // Embers: small glowing bits that drift down and fade after the fireball.
+    for (let i = 0; i < this.n(8 * scale); i++) {
+      const a = Math.random() * Math.PI * 2;
+      const s = rand(60, 220) * scale;
+      ps.spawn(PK.Glow, x, y, Math.cos(a) * s, Math.sin(a) * s - 60, rand(0.8, 1.4), 3, 1, C.fireYellow, 1.2, 140, 0.9);
+    }
     if (water) {
       for (let i = 0; i < this.n(18 * scale); i++) {
         ps.spawn(PK.Smoke, x + rand(-30, 30), y, rand(-120, 120), rand(-620, -250) * scale, rand(0.6, 1.1), 6, 16, C.water, 0.6, 900, 0.9);
@@ -265,7 +329,10 @@ export class FxDirector {
   }
 
   private destruction(x: number, y: number, vx: number, vy: number, a: Aircraft | undefined): void {
-    this.explosion(x, y, 1.5, false);
+    // Stage 1: flash + fireball. Stages 2-3: secondary cook-offs trailing the wreck.
+    this.explosion(x, y, 1.4, false);
+    this.delayed.push({ t: 0.12, x: x + vx * 0.12 + rand(-20, 20), y: y + vy * 0.12 + rand(-20, 20), scale: 0.6, big: false });
+    this.delayed.push({ t: 0.3, x: x + vx * 0.25 + rand(-30, 30), y: y + vy * 0.25 + rand(-10, 30), scale: 0.45, big: false });
     const blue = a?.team === TEAM_BLUE;
     const debris = blue ? C.debrisBlue : C.debrisOrange;
     for (let i = 0; i < this.n(14); i++) {
@@ -283,9 +350,41 @@ export class FxDirector {
     this.pilots.push({ x, y, vx: vx * 0.2, vy: -420, t: 0, team: a?.team ?? 0 });
   }
 
+  /** Boss death: a chain of explosions across the hull, then one huge blast. */
+  private bossDestruction(x: number, y: number, radius: number, name: string): void {
+    this.hud?.banner(`${name} DESTROYED`, '', 3, 'good');
+    this.onSlowmo?.(1.4, 0.35);
+    this.cam.addTrauma(0.5);
+    for (let i = 0; i < 8; i++) {
+      this.delayed.push({ t: i * 0.22, x: x + rand(-radius, radius), y: y + rand(-radius * 0.5, radius * 0.5), scale: rand(0.6, 1), big: false });
+    }
+    this.delayed.push({ t: 1.9, x, y, scale: 3.2, big: true });
+  }
+
   /** Per-frame cosmetic emitters. `alpha` is the render interpolation factor. */
   update(world: World, dt: number, alpha: number): void {
     const ps = this.ps;
+    for (let i = this.delayed.length - 1; i >= 0; i--) {
+      const d = this.delayed[i];
+      d.t -= dt;
+      if (d.t > 0) continue;
+      this.delayed.splice(i, 1);
+      this.explosion(d.x, d.y, d.scale, false);
+      if (d.big) {
+        ps.spawn(PK.Ring, d.x, d.y, 0, 0, 0.9, 30, 700, C.white, 0, 0, 1);
+        ps.spawn(PK.Flash, d.x, d.y, 0, 0, 0.3, 200, 500, C.fireYellow, 0, 0, 1);
+        for (let k = 0; k < this.n(30); k++) {
+          const ang = Math.random() * Math.PI * 2;
+          const sp = rand(200, 700);
+          ps.spawn(PK.Debris, d.x, d.y, Math.cos(ang) * sp, Math.sin(ang) * sp, rand(1.5, 3), rand(5, 12), rand(3, 8), C.debrisOrange, 0.3, 420, 1, rand(-10, 10));
+        }
+        this.cam.addTrauma(1);
+        this.sfx('explosionBig', d.x, d.y, 1.3);
+      } else {
+        this.sfx('explosionSmall', d.x, d.y, 0.7);
+        this.shakeFrom(d.x, d.y, 0.25);
+      }
+    }
     for (const [id, t] of this.flash) {
       if (t - dt <= 0) this.flash.delete(id);
       else this.flash.set(id, t - dt);
@@ -297,12 +396,27 @@ export class FxDirector {
       const y = a.py + (a.y - a.py) * alpha;
       const cos = Math.cos(a.heading);
       const sin = Math.sin(a.heading);
-      const tailX = x - cos * 36;
-      const tailY = y - sin * 36;
+      const size = a.def.artScale ?? 1;
+      const tailX = x - cos * 44 * size;
+      const tailY = y - sin * 44 * size;
       const hp = a.health / a.def.health;
 
-      if (a.boosting && Math.random() < dt * 45 * ps.density) {
-        ps.spawn(PK.Smoke, tailX, tailY, -cos * 60 + rand(-20, 20), -sin * 60 + rand(-20, 20), rand(0.35, 0.6), 4, 14, C.smokeLight, 2, -10, 0.45);
+      if (a.boosting) {
+        // Burner: heavy exhaust smoke plus hot sparks streaming off the nozzle.
+        if (Math.random() < dt * 70 * ps.density) {
+          ps.spawn(PK.Smoke, tailX, tailY, -cos * 80 + rand(-20, 20), -sin * 80 + rand(-20, 20), rand(0.4, 0.7), 5, 18, C.smokeLight, 2, -10, 0.45);
+        }
+        if (Math.random() < dt * 40 * ps.density) {
+          ps.spawn(PK.Glow, tailX, tailY, -cos * 260 + rand(-40, 40), -sin * 260 + rand(-40, 40), rand(0.12, 0.25), 3, 1, C.fireYellow, 3, 0, 0.9);
+        }
+      }
+      // Wingtip vapour during hard, fast turns.
+      const turnFrac = Math.abs(a.turnVel) / Math.max(0.1, a.def.turnRate);
+      if (turnFrac > 0.7 && a.speed > a.def.cruiseSpeed * 0.85 && Math.random() < dt * 60 * ps.density) {
+        const off = 14 * size;
+        for (const k of [-1, 1]) {
+          ps.spawn(PK.Smoke, x - cos * 8 - sin * off * k, y - sin * 8 + cos * off * k, 0, 0, 0.45, 1.5, 3.5, C.white, 0, 0, 0.35);
+        }
       }
       // Contrails at high speed.
       if (a.speed > a.def.maxSpeed * 0.95 && Math.random() < dt * 50 * ps.density) {

@@ -149,6 +149,53 @@ describe('bosses', () => {
   });
 });
 
+describe('stage and boss rewards', () => {
+  it('a boss kill event carries the boss bonus, counted once', () => {
+    const world = makeWorld(9);
+    const p = world.addAircraft('viper', TEAM_BLUE, 'P', true, 3);
+    spawnAircraft(world, p, 3500, 900, 1);
+    p.godMode = true;
+    const mode = new WaveMode([p.id]);
+    world.mode = mode;
+    for (let i = 0; i < 60 * 4; i++) stepWorld(world, new Map());
+    const m = mode as unknown as { startLevel(w: typeof world, l: number): void; startStage(w: typeof world): void; stage: number };
+    m.startLevel(world, 2);
+    m.stage = 2;
+    m.startStage(world);
+    for (let i = 0; i < 60 * 5; i++) stepWorld(world, new Map());
+    const boss = world.aircraft.find((a) => a.def.boss && a.alive)!;
+    expect(boss).toBeTruthy();
+    for (const a of world.aircraft) if (a.team === TEAM_ORANGE && a !== boss) a.alive = false;
+    boss.spawnProtection = 0;
+    const before = p.stats.score;
+    applyDamage(world, boss, 99999, p.id, 'debug');
+    const kill = world.events.find((e) => e.type === 'kill');
+    expect(kill && kill.type === 'kill' && kill.score).toBe(100 + 400 * 2);
+    expect(p.stats.score - before).toBe(100 + 400 * 2);
+  });
+
+  it('hostile missiles self-destruct when a stage is cleared, without evasion credit', () => {
+    const world = makeWorld(5);
+    const p = world.addAircraft('viper', TEAM_BLUE, 'P', true, 3);
+    const mode = new WaveMode([p.id]);
+    world.mode = mode;
+    spawnAircraft(world, p, 4000, 1000, 1);
+    p.godMode = true;
+    for (let i = 0; i < 60 * 4; i++) stepWorld(world, new Map());
+    expect(mode.phase).toBe('playing');
+    const e = world.aircraft.find((a) => a.team === TEAM_ORANGE && a.alive)!;
+    const ms = world.allocMissile()!;
+    Object.assign(ms, { active: true, x: p.x - 900, y: p.y, px: p.x - 900, py: p.y, team: TEAM_ORANGE, ownerId: e.id, targetId: p.id, victimId: p.id, chaseLeft: 8, heading: 0, speed: 100, age: 1, life: 20, flareTarget: -1 });
+    e.spawnProtection = 0;
+    applyDamage(world, e, 99999, p.id, 'debug');
+    const seen: string[] = [];
+    stepWorld(world, new Map());
+    seen.push(...world.events.map((x) => x.type));
+    expect(ms.active).toBe(false);
+    expect(seen).not.toContain('missileEvaded');
+  });
+});
+
 describe('aircraft unlocks', () => {
   it('Viper is always available; others need the listed level', () => {
     expect(isUnlocked('viper', 0)).toBe(true);

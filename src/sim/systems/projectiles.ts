@@ -109,6 +109,12 @@ function fizzleMissile(world: World, m: Missile): void {
   creditEvasion(world, m);
 }
 
+/** Harmlessly pop a missile without crediting anyone (e.g. its fight is over). */
+export function defuseMissile(world: World, m: Missile): void {
+  m.active = false;
+  world.emit({ type: 'missileExplode', missileId: m.id, x: m.x, y: m.y, radius: 0, water: false });
+}
+
 /** A missile that was chasing someone and died without hitting counts as evaded by them. */
 export function creditEvasion(world: World, m: Missile): void {
   if (!m.victimId) return;

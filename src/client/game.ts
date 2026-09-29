@@ -330,7 +330,8 @@ export class Game {
     if (me) {
       const ax = me.px + (me.x - me.px) * session.alpha;
       const ay = me.py + (me.y - me.py) * session.alpha;
-      this.renderer.cam.update(fdt, ax, ay, me.vx, me.vy, session.world.map.width, session.world.map.seaLevel);
+      this.renderer.cam.update(fdt, ax, ay, me.vx, me.vy, session.world.map.width, session.world.map.seaLevel,
+        me.alive ? me.speed / me.def.maxSpeed : 0, me.alive ? me.turnVel / me.def.turnRate : 0);
     }
     this.audio.listenerX = this.renderer.cam.x;
     this.audio.listenerY = this.renderer.cam.y;

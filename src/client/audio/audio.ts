@@ -7,13 +7,16 @@
 export type Sfx =
   | 'gun' | 'gunEnemy' | 'hitConfirm' | 'hitCrit' | 'hurt' | 'missileLaunch' | 'explosionSmall'
   | 'explosionBig' | 'flare' | 'lockOn' | 'ability' | 'splash' | 'crash' | 'spawn'
-  | 'uiMove' | 'uiSelect' | 'uiBack' | 'countdown' | 'go' | 'waveStart' | 'waveClear' | 'kill' | 'defeat';
+  | 'uiMove' | 'uiSelect' | 'uiBack' | 'countdown' | 'go' | 'waveStart' | 'waveClear' | 'kill' | 'defeat'
+  | 'levelStart' | 'levelComplete' | 'contact' | 'bossWarning' | 'shield' | 'evaded' | 'collision' | 'overheat';
 
 /** Distance (world units) at which spatial sounds fade out completely. */
 const HEARING_RANGE = 2600;
 const PAN_RANGE = 1300;
 /** Per-sound minimum spacing (s) — stops gunfire stacking into noise. */
-const RATE_LIMIT: Partial<Record<Sfx, number>> = { gun: 0.05, gunEnemy: 0.07, hitConfirm: 0.04, hurt: 0.08, flare: 0.1 };
+const RATE_LIMIT: Partial<Record<Sfx, number>> = {
+  gun: 0.05, gunEnemy: 0.07, hitConfirm: 0.04, hurt: 0.08, flare: 0.1, explosionSmall: 0.06, collision: 0.3,
+};
 
 export class AudioEngine {
   ctx: AudioContext | null = null;
@@ -337,6 +340,42 @@ export class AudioEngine {
       case 'kill':
         this.tone(988, 0.08, 'square', 0.07, undefined, 0, out);
         this.tone(1318, 0.14, 'triangle', 0.12, undefined, 0.07, out);
+        break;
+      case 'levelStart':
+        [392, 494, 587, 784].forEach((f, i) => this.tone(f, 0.22, 'triangle', 0.12, undefined, i * 0.07, out));
+        this.tone(196, 0.6, 'sawtooth', 0.05, 392, 0, out);
+        break;
+      case 'levelComplete':
+        [523, 659, 784, 1046, 784, 1046, 1318].forEach((f, i) => this.tone(f, i > 4 ? 0.5 : 0.18, 'triangle', 0.13, undefined, i * 0.1, out));
+        break;
+      case 'contact':
+        // Radar ping: two soft, ringing blips.
+        this.tone(1250, 0.35, 'sine', 0.14, 1180, 0, out);
+        this.tone(1250, 0.35, 'sine', 0.08, 1180, 0.22, out);
+        break;
+      case 'bossWarning':
+        // Klaxon: three rising-falling sweeps.
+        for (let i = 0; i < 3; i++) {
+          this.tone(440, 0.45, 'sawtooth', 0.07, 880, i * 0.55, out);
+          this.tone(880, 0.1, 'sawtooth', 0.05, 440, i * 0.55 + 0.45, out);
+        }
+        break;
+      case 'shield':
+        this.tone(1400, 0.6, 'sine', 0.12, 300, 0, out);
+        this.burst(0.5, 0.25, 'bandpass', 2400, 600, 1.5, out);
+        break;
+      case 'evaded':
+        this.burst(0.35, 0.3, 'bandpass', 3000, 700, 1.2, out);
+        this.tone(880, 0.18, 'sine', 0.1, 1320, 0.05, out);
+        break;
+      case 'collision':
+        this.burst(0.4, 1, 'lowpass', 1200, 120, 1, out);
+        this.tone(160, 0.25, 'square', 0.12, 60, 0, out);
+        this.tone(900, 0.12, 'square', 0.05, 500, 0.02, out);
+        break;
+      case 'overheat':
+        this.burst(0.9, 0.35, 'highpass', 5000, 3000, 0.4, out);
+        this.tone(330, 0.2, 'square', 0.06, 220, 0, out);
         break;
       case 'defeat':
         [392, 330, 262].forEach((f, i) => this.tone(f, 0.4, 'triangle', 0.13, undefined, i * 0.22, out));

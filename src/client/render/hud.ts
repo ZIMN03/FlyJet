@@ -26,7 +26,7 @@ const COL = {
 const RADAR_RANGE = 3000;
 const PIPPER_DIST = 430;
 
-type BannerStyle = 'wave' | 'good' | 'warn';
+type BannerStyle = 'wave' | 'good' | 'warn' | 'boss';
 interface Banner { title: string; sub: string; t: number; dur: number; style: BannerStyle }
 interface Notice { text: string; sub: string; t: number; color: string }
 
@@ -73,8 +73,20 @@ export class Hud {
   private streakT = 0;
   private terrainPts: number[] = [];
   private terrainFor: World | null = null;
+  // Smoothed/ghost values so bars glide instead of jumping.
+  private hpShown = -1;
+  private hpGhost = -1;
+  private bossShown = -1;
+  private bossGhost = -1;
+  private bossFor = 0;
+  private targetShown = 0;
+  private contactT = 0;
+  private contactBearing = 0;
+  private lastDt = 1 / 60;
 
   reset(): void {
+    this.hpShown = this.hpGhost = this.bossShown = this.bossGhost = -1;
+    this.contactT = 0;
     this.banners = [];
     this.notices = [];
     this.hitMarkerT = 0;
@@ -108,12 +120,26 @@ export class Hud {
     }
   }
 
+  /** Pulse a radar-contact indicator on the side the bandits are coming from. */
+  contact(bearing: number): void {
+    this.contactT = 2.4;
+    this.contactBearing = bearing;
+  }
+
+  /** Small centre notice (e.g. "MISSILE EVADED +20 XP"). */
+  notice(text: string, sub: string): void {
+    this.notices.push({ text, sub, t: 0, color: COL.good });
+    if (this.notices.length > 4) this.notices.shift();
+  }
+
   assist(name: string, score: number): void {
     this.notices.push({ text: `ASSIST  ${name}`, sub: `+${score}`, t: 0, color: COL.dim });
     if (this.notices.length > 4) this.notices.shift();
   }
 
   update(dt: number): void {
+    this.lastDt = dt;
+    this.contactT = Math.max(0, this.contactT - dt);
     this.hitMarkerT = Math.max(0, this.hitMarkerT - dt);
     this.damageT = Math.max(0, this.damageT - dt);
     this.streakT = Math.max(0, this.streakT - dt);
@@ -140,9 +166,13 @@ export class Hud {
       this.drawThreats(ctx, v, me, u, W, H);
     }
     this.drawOffscreen(ctx, v, u, W, H);
+    if (me && me.alive) this.drawVelocityVector(ctx, v, me, u);
     if (me) this.drawPlayerPanel(ctx, v, me, u, H);
     this.drawTopLeft(ctx, v, me, u);
     if (v.showMinimap) this.drawMinimap(ctx, v, u, W);
+    if (me && me.alive) this.drawTargetPanel(ctx, v, me, u, W);
+    this.drawBossBar(ctx, v, u, W);
+    if (this.contactT > 0) this.drawContact(ctx, u, W, H, v.time);
     this.drawHitMarker(ctx, W, H, u);
     this.drawBanners(ctx, W, H, u);
     this.drawNotices(ctx, W, H, u);
@@ -231,7 +261,8 @@ export class Hud {
       if (sx < -50 || sx > v.cam.screenW + 50 || sy < -50 || sy > v.cam.screenH + 50) continue;
       const enemy = !me || a.team !== me.team;
       const col = enemy ? COL.enemy : COL.ally;
-      const top = sy - 42 * u * Math.max(0.8, v.cam.zoom);
+      // Large airframes (bosses) push the marker clear of their art.
+      const top = sy - 42 * u * Math.max(0.8, v.cam.zoom) * Math.max(1, (a.def.artScale ?? 1) * 0.85);
       // Shape encodes allegiance too (diamond = hostile, chevron = friendly) — never colour alone.
       ctx.fillStyle = col;
       ctx.beginPath();
@@ -319,18 +350,23 @@ export class Hud {
     const sy = v.cam.worldToScreenY(y);
     const blink = Math.sin(v.time * 18) > 0;
     if (me.incomingMissileDist < Infinity) {
-      // Arrow around the player pointing at the missile.
-      const a = me.incomingMissileAngle;
-      const r = 62 * u;
-      ctx.fillStyle = COL.danger;
-      ctx.save();
-      ctx.translate(sx + Math.cos(a) * r, sy + Math.sin(a) * r);
-      ctx.rotate(a);
-      ctx.beginPath();
-      ctx.moveTo(12 * u, 0); ctx.lineTo(-6 * u, -9 * u); ctx.lineTo(-6 * u, 9 * u);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
+      // One arrow around the player per missile chasing us; closer = bigger and brighter.
+      for (const m of v.world.missiles) {
+        if (!m.active || m.targetId !== me.id || m.flareTarget >= 0) continue;
+        const a = Math.atan2(m.y - me.y, m.x - me.x);
+        const md = Math.hypot(m.x - me.x, m.y - me.y);
+        const k = clamp(1.4 - md / 1500, 0.6, 1.4);
+        const r = 62 * u;
+        ctx.fillStyle = md < 500 ? COL.danger : 'rgba(255,90,70,0.8)';
+        ctx.save();
+        ctx.translate(sx + Math.cos(a) * r, sy + Math.sin(a) * r);
+        ctx.rotate(a);
+        ctx.beginPath();
+        ctx.moveTo(12 * u * k, 0); ctx.lineTo(-6 * u * k, -9 * u * k); ctx.lineTo(-6 * u * k, 9 * u * k);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
       if (blink || me.incomingMissileDist < 400) {
         this.warningLabel(ctx, W / 2, H * 0.24, '▲ MISSILE ▲', `${Math.round(me.incomingMissileDist)} m — press FLARES [${v.keyLabel('flare')}]`, COL.danger, u);
       }
@@ -413,8 +449,8 @@ export class Hud {
   }
 
   private drawPlayerPanel(ctx: CanvasRenderingContext2D, v: HudView, me: Aircraft, u: number, H: number): void {
-    const pw = 360 * u;
-    const ph = 124 * u;
+    const pw = 410 * u;
+    const ph = 128 * u;
     const x = 20 * u;
     const y = H - ph - 20 * u;
     roundRect(ctx, x, y, pw, ph, 10 * u);
@@ -424,10 +460,16 @@ export class Hud {
     ctx.lineWidth = 1;
     ctx.stroke();
 
+    // Hull with a smooth fill and a trailing "ghost" of recent damage.
     const hp = me.health / me.def.health;
+    const dt = this.lastDt;
+    if (this.hpShown < 0) this.hpShown = this.hpGhost = hp;
+    this.hpShown += (hp - this.hpShown) * Math.min(1, dt * 14);
+    this.hpGhost = hp > this.hpGhost ? hp : this.hpGhost - Math.min(this.hpGhost - hp, dt * 0.35);
     const hcol = hp < 0.25 ? COL.healthCrit : hp < 0.5 ? COL.healthLow : COL.health;
     const px = x + 14 * u;
     let py = y + 16 * u;
+    const barW = 210 * u;
     ctx.textAlign = 'left';
     ctx.font = this.font(11 * u, 700);
     ctx.fillStyle = COL.dim;
@@ -436,45 +478,64 @@ export class Hud {
     ctx.fillStyle = hcol;
     const state = hp <= 0 ? 'DOWN' : hp < 0.1 ? 'CRITICAL' : hp < 0.25 ? 'HEAVY DAMAGE' : hp < 0.5 ? 'DAMAGED' : '';
     const critBlink = hp < 0.1 && Math.sin(v.time * 10) < 0;
-    ctx.fillText(`${critBlink ? '' : state}  ${Math.ceil(me.health)}`, px + 200 * u, py);
+    ctx.fillText(`${critBlink ? '' : state}  ${Math.ceil(me.health)}`, px + barW, py);
     py += 10 * u;
-    this.bar(ctx, px, py, 200 * u, 12 * u, hp, hcol, 10);
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.fillRect(px, py, barW, 12 * u);
+    ctx.fillStyle = 'rgba(255,80,60,0.75)';
+    ctx.fillRect(px, py, barW * clamp(this.hpGhost, 0, 1), 12 * u);
+    ctx.fillStyle = hcol;
+    ctx.fillRect(px, py, barW * clamp(this.hpShown, 0, 1), 12 * u);
+    ctx.fillStyle = 'rgba(8,16,28,0.8)';
+    for (let i = 1; i < 10; i++) ctx.fillRect(px + (barW * i) / 10 - 1, py, 2, 12 * u);
+
+    // Burner fuel and cannon heat side by side.
     py += 26 * u;
+    const half = barW / 2 - 6 * u;
     ctx.textAlign = 'left';
     ctx.fillStyle = COL.dim;
     ctx.fillText(`BURNER [${v.keyLabel('boost')}]`, px, py);
+    ctx.fillStyle = me.overheated ? COL.danger : COL.dim;
+    // Weapon name doubles as the heat bar label (e.g. "PULSE CANNON").
+    ctx.fillText(me.overheated ? 'OVERHEATED' : me.gun.name.replace(/^Twin /, '').toUpperCase(), px + half + 12 * u, py);
     py += 9 * u;
     const bfrac = me.boostEnergy / me.def.afterburnerCapacity;
-    this.bar(ctx, px, py, 200 * u, 7 * u, bfrac, me.boostEnergy < me.def.afterburnerMinStart ? COL.warn : COL.burner, 0);
+    this.bar(ctx, px, py, half, 7 * u, bfrac, me.boostEnergy < me.def.afterburnerMinStart ? COL.warn : me.boosting ? '#ffffff' : COL.burner, 0);
+    const heatCol = me.overheated ? (Math.sin(v.time * 16) > 0 ? COL.danger : COL.warn) : me.gunHeat > 0.7 ? COL.warn : 'rgba(255,200,140,0.85)';
+    this.bar(ctx, px + half + 12 * u, py, half, 7 * u, me.gunHeat, heatCol, 0);
 
-    // Missiles + flares row.
-    py += 26 * u;
+    // Missiles + flares.
+    py += 24 * u;
     ctx.fillStyle = COL.dim;
     ctx.fillText(`MSL [${v.keyLabel('missile')}]`, px, py);
-    for (let i = 0; i < me.def.missileCapacity; i++) {
-      const mx = px + 58 * u + i * 13 * u;
+    const cap = me.def.missileCapacity;
+    const pipW = Math.min(13 * u, (half - 48 * u) / Math.max(1, cap));
+    for (let i = 0; i < cap; i++) {
+      const mx = px + 56 * u + i * pipW;
       ctx.fillStyle = i < me.missileAmmo ? COL.text : 'rgba(255,255,255,0.15)';
-      ctx.fillRect(mx, py - 7 * u, 5 * u, 14 * u);
+      ctx.fillRect(mx, py - 7 * u, Math.max(2, pipW - 7 * u), 14 * u);
       if (i === me.missileAmmo && me.missileRearmTimer > 0) {
         const f = me.missileRearmTimer / me.def.missileRearmTime;
         ctx.fillStyle = 'rgba(255,255,255,0.45)';
-        ctx.fillRect(mx, py + 7 * u - 14 * u * f, 5 * u, 14 * u * f);
+        ctx.fillRect(mx, py + 7 * u - 14 * u * f, Math.max(2, pipW - 7 * u), 14 * u * f);
       }
     }
-    const fx = px + 112 * u;
+    const fx = px + half + 12 * u;
     ctx.fillStyle = COL.dim;
-    ctx.fillText(`FLR [${v.keyLabel('flare')}]`, fx, py + 20 * u);
+    ctx.fillText(`FLR [${v.keyLabel('flare')}]`, fx, py);
     for (let i = 0; i < me.def.flareCharges; i++) {
       ctx.fillStyle = i < me.flareCharges ? COL.warn : 'rgba(255,255,255,0.15)';
       ctx.beginPath();
-      ctx.arc(fx + 56 * u + i * 13 * u, py + 20 * u, 4 * u, 0, Math.PI * 2);
+      ctx.arc(fx + 56 * u + i * 13 * u, py, 4 * u, 0, Math.PI * 2);
       ctx.fill();
     }
+    py += 22 * u;
     ctx.fillStyle = COL.dim;
-    ctx.fillText(`SPD ${Math.round(Math.hypot(me.vx, me.vy))}`, px, py + 20 * u);
+    ctx.fillText(`SPD ${Math.round(Math.hypot(me.vx, me.vy))}`, px, py);
+    ctx.fillText(`ALT ${Math.max(0, Math.round(v.world.map.seaLevel - me.y))}`, fx, py);
 
     // Throttle gauge (vertical), with a tick at the cruise setting.
-    const tx = x + 236 * u;
+    const tx = x + 238 * u;
     const ty = y + 14 * u;
     const th = ph - 44 * u;
     const tw = 10 * u;
@@ -490,12 +551,14 @@ export class Hud {
     ctx.fillStyle = me.stalled ? COL.danger : COL.dim;
     ctx.fillText(me.stalled ? 'STALL' : 'THR', tx + tw / 2, ty + th + 12 * u);
     ctx.fillText(`${Math.round(me.throttle * 100)}`, tx + tw / 2, ty + th + 24 * u);
-    ctx.textAlign = 'left';
+
+    // Heading dial: always readable through full loops.
+    this.drawHeadingDial(ctx, me, x + 292 * u, y + 52 * u, 26 * u, u);
 
     // Ability ring.
-    const ax = x + pw - 52 * u;
+    const ax = x + pw - 44 * u;
     const ay = y + 52 * u;
-    const r = 30 * u;
+    const r = 26 * u;
     const ready = me.abilityCooldown <= 0;
     const active = me.abilityTimer > 0;
     ctx.lineWidth = 5 * u;
@@ -509,7 +572,7 @@ export class Hud {
     ctx.arc(ax, ay, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac);
     ctx.stroke();
     ctx.textAlign = 'center';
-    ctx.font = this.font(ready || active ? 13 * u : 16 * u, 800);
+    ctx.font = this.font(ready || active ? 12 * u : 16 * u, 800);
     ctx.fillStyle = ready || active ? COL.text : COL.dim;
     ctx.fillText(active ? 'ACTIVE' : ready ? v.keyLabel('ability') : `${Math.ceil(me.abilityCooldown)}`, ax, ay);
     ctx.font = this.font(10 * u, 700);
@@ -526,28 +589,202 @@ export class Hud {
     }
   }
 
+  /**
+   * Attitude/heading dial: a small aircraft symbol points exactly where the
+   * nose points on screen, with the angle in degrees (0 = level right,
+   * 90 = straight up, 180 = level left, 270 = straight down).
+   */
+  private drawHeadingDial(ctx: CanvasRenderingContext2D, me: Aircraft, cx: number, cy: number, r: number, u: number): void {
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.lineWidth = 1.5 * u;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+    for (let i = 0; i < 8; i++) {
+      const a = (i * Math.PI) / 4;
+      const inner = i % 2 === 0 ? r - 6 * u : r - 3 * u;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a) * inner, cy + Math.sin(a) * inner);
+      ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+      ctx.stroke();
+    }
+    // Horizon reference.
+    ctx.strokeStyle = 'rgba(95,227,255,0.35)';
+    ctx.beginPath();
+    ctx.moveTo(cx - r, cy);
+    ctx.lineTo(cx + r, cy);
+    ctx.stroke();
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(me.heading);
+    ctx.fillStyle = COL.ally;
+    ctx.beginPath();
+    ctx.moveTo(r - 4 * u, 0);
+    ctx.lineTo(-r * 0.45, -r * 0.32);
+    ctx.lineTo(-r * 0.2, 0);
+    ctx.lineTo(-r * 0.45, r * 0.32);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    const deg = Math.round(((-me.heading * 180) / Math.PI + 360) % 360) % 360;
+    ctx.textAlign = 'center';
+    ctx.font = this.font(10 * u, 700);
+    ctx.fillStyle = COL.dim;
+    ctx.fillText(`HDG ${String(deg).padStart(3, '0')}°`, cx, cy + r + 14 * u);
+  }
+
+  /** Where the aircraft is actually moving (differs from the nose while drifting or stalled). */
+  private drawVelocityVector(ctx: CanvasRenderingContext2D, v: HudView, me: Aircraft, u: number): void {
+    const sp = Math.hypot(me.vx, me.vy);
+    if (sp < 1) return;
+    const [x, y] = this.interp(me, v.alpha);
+    const d = 300;
+    const sx = v.cam.worldToScreenX(x + (me.vx / sp) * d);
+    const sy = v.cam.worldToScreenY(y + (me.vy / sp) * d);
+    ctx.strokeStyle = 'rgba(160,240,255,0.45)';
+    ctx.lineWidth = 1.5 * u;
+    ctx.beginPath();
+    ctx.arc(sx, sy, 5 * u, 0, Math.PI * 2);
+    ctx.moveTo(sx - 12 * u, sy); ctx.lineTo(sx - 5 * u, sy);
+    ctx.moveTo(sx + 5 * u, sy); ctx.lineTo(sx + 12 * u, sy);
+    ctx.moveTo(sx, sy - 5 * u); ctx.lineTo(sx, sy - 10 * u);
+    ctx.stroke();
+  }
+
+  /** Locked (or nearest visible) enemy: identity, range, hull and lock status. */
+  private drawTargetPanel(ctx: CanvasRenderingContext2D, v: HudView, me: Aircraft, u: number, W: number): void {
+    let t = me.lockTargetId ? v.world.getAircraft(me.lockTargetId) : undefined;
+    if (!t || !t.alive) {
+      let best = RADAR_RANGE;
+      for (const a of v.world.aircraft) {
+        if (!a.alive || a.team === me.team || a.def.boss) continue;
+        const d = Math.hypot(a.x - me.x, a.y - me.y);
+        if (d < best) { best = d; t = a; }
+      }
+    }
+    if (!t || !t.alive) return;
+    if (t.id !== this.targetShown) this.targetShown = t.id;
+    const w = 250 * u;
+    const h = 62 * u;
+    const x = W - w - 20 * u;
+    const y = (v.showMinimap ? 128 : 20) * u;
+    roundRect(ctx, x, y, w, h, 8 * u);
+    ctx.fillStyle = COL.panel;
+    ctx.fill();
+    ctx.strokeStyle = me.lockState === LockState.Locked && me.lockTargetId === t.id ? 'rgba(255,59,59,0.7)' : COL.panelEdge;
+    ctx.stroke();
+    const d = Math.hypot(t.x - me.x, t.y - me.y);
+    ctx.textAlign = 'left';
+    ctx.font = this.font(13 * u, 800);
+    ctx.fillStyle = COL.enemy;
+    ctx.fillText(t.def.name, x + 12 * u, y + 16 * u);
+    ctx.font = this.font(10 * u, 700);
+    ctx.fillStyle = COL.dim;
+    ctx.fillText((t.def.role ?? t.def.className).toUpperCase(), x + 12 * u, y + 32 * u);
+    ctx.textAlign = 'right';
+    ctx.font = this.font(12 * u, 700);
+    ctx.fillStyle = COL.text;
+    ctx.fillText(`${Math.round(d / 10) * 10} m`, x + w - 12 * u, y + 16 * u);
+    const locked = me.lockTargetId === t.id;
+    const lockTxt = !locked ? 'NO LOCK' : me.lockState === LockState.Locked ? 'LOCKED' : `LOCKING ${Math.round(me.lockProgress * 100)}%`;
+    ctx.font = this.font(10 * u, 800);
+    ctx.fillStyle = locked && me.lockState === LockState.Locked ? COL.danger : locked ? COL.warn : COL.dim;
+    ctx.fillText(lockTxt, x + w - 12 * u, y + 32 * u);
+    this.bar(ctx, x + 12 * u, y + 44 * u, w - 24 * u, 6 * u, t.health / t.def.health, COL.enemy, 0);
+  }
+
+  /** Boss health bar across the top, with phase and shield state. */
+  private drawBossBar(ctx: CanvasRenderingContext2D, v: HudView, u: number, W: number): void {
+    const m = v.mode;
+    const b = m && m.bossId ? v.world.getAircraft(m.bossId) : undefined;
+    if (!b || !b.alive) {
+      this.bossShown = this.bossGhost = -1;
+      return;
+    }
+    const f = b.health / b.def.health;
+    const dt = this.lastDt;
+    if (this.bossShown < 0 || this.bossFor !== b.id) {
+      this.bossShown = this.bossGhost = f;
+      this.bossFor = b.id;
+    }
+    this.bossShown += (f - this.bossShown) * Math.min(1, dt * 10);
+    this.bossGhost = f > this.bossGhost ? f : this.bossGhost - Math.min(this.bossGhost - f, dt * 0.25);
+    const w = Math.min(560 * u, W * 0.5);
+    const x = W / 2 - w / 2;
+    // Sits below the tutorial hint strip so neither hides the other.
+    const y = 96 * u;
+    ctx.textAlign = 'center';
+    ctx.font = this.font(13 * u, 800);
+    const brain = v.world.brains.get(b.id) as { phase?: number } | undefined;
+    const phase = brain?.phase ?? 1;
+    this.text(ctx, `${b.def.name}  ·  ${b.godMode ? 'SHIELDED' : `PHASE ${phase}`}`, W / 2, y - 12 * u, b.godMode ? COL.warn : COL.enemy, u);
+    ctx.fillStyle = 'rgba(8,16,28,0.7)';
+    ctx.fillRect(x - 2, y - 2, w + 4, 12 * u + 4);
+    ctx.fillStyle = 'rgba(255,200,120,0.7)';
+    ctx.fillRect(x, y, w * clamp(this.bossGhost, 0, 1), 12 * u);
+    ctx.fillStyle = b.godMode ? 'rgba(255,176,32,0.9)' : COL.enemy;
+    ctx.fillRect(x, y, w * clamp(this.bossShown, 0, 1), 12 * u);
+  }
+
+  /** Radar contact: a sweeping chevron pulse on the side the bandits are coming from. */
+  private drawContact(ctx: CanvasRenderingContext2D, u: number, W: number, H: number, time: number): void {
+    const right = Math.cos(this.contactBearing) > 0;
+    const x = right ? W - 70 * u : 70 * u;
+    const a = Math.min(1, this.contactT) * (0.5 + Math.sin(time * 10) * 0.3);
+    ctx.globalAlpha = a;
+    ctx.fillStyle = COL.warn;
+    for (let i = 0; i < 3; i++) {
+      const ox = (right ? 1 : -1) * i * 18 * u;
+      ctx.beginPath();
+      ctx.moveTo(x + ox + (right ? 12 : -12) * u, H / 2);
+      ctx.lineTo(x + ox, H / 2 - 14 * u);
+      ctx.lineTo(x + ox, H / 2 + 14 * u);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
   private drawTopLeft(ctx: CanvasRenderingContext2D, v: HudView, me: Aircraft | undefined, u: number): void {
     const x = 22 * u;
     let y = 30 * u;
     ctx.textAlign = 'left';
     ctx.font = this.font(30 * u, 800);
-    ctx.fillStyle = COL.text;
-    ctx.fillText(`${me?.stats.score ?? 0}`, x, y);
+    this.text(ctx, `${me?.stats.score ?? 0}`, x, y, COL.text, u);
     ctx.font = this.font(11 * u, 700);
-    ctx.fillStyle = COL.dim;
-    ctx.fillText('SCORE', x, y + 22 * u);
+    this.text(ctx, 'SCORE', x, y + 22 * u, COL.dim, u);
     y += 46 * u;
     const m = v.mode;
     if (m && m.wave > 0) {
       ctx.font = this.font(14 * u, 700);
-      ctx.fillStyle = COL.text;
-      ctx.fillText(`LEVEL ${m.wave}  ·  ${m.enemiesRemaining} HOSTILE${m.enemiesRemaining === 1 ? '' : 'S'} LEFT`, x, y);
+      this.text(ctx, `LEVEL ${m.wave}`, x, y, COL.text, u);
+      // Stage progress pips: waves, then the boss (diamond).
+      const stages = m.stages.length;
+      for (let i = 0; i < stages; i++) {
+        const px = x + 76 * u + i * 16 * u;
+        const done = i < m.stage || (i === m.stage && (m.phase === 'intermission' || m.phase === 'levelComplete'));
+        const current = i === m.stage && !done;
+        ctx.fillStyle = done ? COL.good : current ? COL.text : 'rgba(255,255,255,0.2)';
+        ctx.beginPath();
+        if (m.stages[i].kind === 'boss') {
+          ctx.moveTo(px, y - 6 * u); ctx.lineTo(px + 6 * u, y); ctx.lineTo(px, y + 6 * u); ctx.lineTo(px - 6 * u, y);
+        } else {
+          ctx.arc(px, y, 4 * u, 0, Math.PI * 2);
+        }
+        ctx.closePath();
+        ctx.fill();
+      }
+      y += 20 * u;
+      ctx.font = this.font(12 * u, 700);
+      const st = m.stages[m.stage];
+      const what = m.phase === 'bossWarning' ? 'BOSS INBOUND' : m.phase === 'levelComplete' ? 'LEVEL COMPLETE'
+        : st ? `${st.label.toUpperCase()}  ·  ${m.enemiesRemaining} HOSTILE${m.enemiesRemaining === 1 ? '' : 'S'}` : '';
+      this.text(ctx, what, x, y, COL.dim, u);
       y += 22 * u;
     }
     if (me && me.lives > 0) {
       ctx.font = this.font(11 * u, 700);
-      ctx.fillStyle = COL.dim;
-      ctx.fillText('LIVES', x, y);
+      this.text(ctx, 'LIVES', x, y, COL.dim, u);
       for (let i = 0; i < me.lives; i++) {
         ctx.fillStyle = COL.ally;
         ctx.beginPath();
@@ -655,15 +892,22 @@ export class Hud {
   }
 
   private drawBanners(ctx: CanvasRenderingContext2D, W: number, H: number, u: number): void {
-    let y = H * 0.13;
+    // Keep banners clear of the boss bar while one is shown.
+    let y = this.bossShown >= 0 ? Math.max(H * 0.13, 150 * u) : H * 0.13;
     for (const b of this.banners) {
       const inT = Math.min(1, b.t * 6);
       const outT = Math.min(1, (b.dur - b.t) * 4);
       const a = Math.min(inT, outT);
-      const col = b.style === 'warn' ? COL.warn : b.style === 'good' ? COL.good : COL.text;
+      const col = b.style === 'warn' ? COL.warn : b.style === 'good' ? COL.good : b.style === 'boss' ? COL.danger : COL.text;
+      if (b.style === 'boss') {
+        // Boss warning: pulsing hazard band behind the title.
+        ctx.globalAlpha = a * (0.35 + Math.sin(b.t * 12) * 0.15);
+        ctx.fillStyle = 'rgba(160,20,20,0.6)';
+        ctx.fillRect(0, y - 26 * u, W, 52 * u);
+      }
       ctx.globalAlpha = a;
       ctx.textAlign = 'center';
-      const size = b.style === 'wave' ? 38 : 22;
+      const size = b.style === 'wave' || b.style === 'boss' ? 38 : 22;
       ctx.font = this.font(size * u * (0.9 + inT * 0.1), 800);
       this.text(ctx, b.title, W / 2, y, col, u);
       if (b.sub) {
@@ -721,7 +965,7 @@ export class Hud {
     }
     if (m && m.phase === 'intermission') {
       ctx.font = this.font(15 * u, 700);
-      this.text(ctx, `Level ${m.wave + 1} in ${Math.ceil(m.phaseTimer)}`, W / 2, H * 0.33, COL.text, u);
+      this.text(ctx, `${m.stages[m.stage]?.label ?? 'Next wave'} in ${Math.ceil(m.phaseTimer)}`, W / 2, H * 0.33, COL.text, u);
     }
     if (me && !me.alive && (!m || (m.phase !== 'ending' && m.phase !== 'ended'))) {
       ctx.font = this.font(34 * u, 900);

@@ -17,4 +17,6 @@ export interface GameMode {
   readonly combatEnabled: boolean;
   update(world: World, dt: number): void;
   onDestroyed(world: World, victim: Aircraft, killerId: number): void;
+  /** Extra score a mode awards for this kill (e.g. bosses); included in the kill event. */
+  killBonus?(world: World, victim: Aircraft, killer: Aircraft): number;
 }

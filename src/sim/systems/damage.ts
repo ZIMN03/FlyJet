@@ -72,7 +72,8 @@ export function destroyAircraft(world: World, victim: Aircraft, attackerId: numb
     killer.stats.kills++;
     killer.stats.streak++;
     killer.stats.bestStreak = Math.max(killer.stats.bestStreak, killer.stats.streak);
-    const score = SCORE.kill + (source === 'missile' ? SCORE.missileKillBonus : 0);
+    const score = SCORE.kill + (source === 'missile' ? SCORE.missileKillBonus : 0)
+      + (world.mode?.killBonus?.(world, victim, killer) ?? 0);
     killer.stats.score += score;
     world.emit({ type: 'kill', killerId: killer.id, victimId: victim.id, score, streak: killer.stats.streak, source });
   }

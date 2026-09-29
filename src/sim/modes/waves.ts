@@ -4,6 +4,7 @@ import { PERSONALITIES } from '../ai/personalities';
 import { AIRCRAFT, type AircraftDef } from '../config/aircraft';
 import { COMBAT, SCORE, TEAM_ORANGE } from '../constants';
 import { clamp } from '../math';
+import { defuseMissile } from '../systems/projectiles';
 import { chooseSpawn, spawnAircraft } from '../systems/spawn';
 import type { Aircraft } from '../types';
 import type { World } from '../world';
@@ -261,14 +262,14 @@ export class WaveMode implements GameMode {
     }
   }
 
-  onDestroyed(world: World, victim: Aircraft, killerId: number): void {
+  killBonus(_world: World, victim: Aircraft, killer: Aircraft): number {
+    return victim.id === this.bossId && this.playerIds.includes(killer.id) ? SCORE.bossKill * this.wave : 0;
+  }
+
+  onDestroyed(world: World, victim: Aircraft, _killerId: number): void {
     if (this.enemies.delete(victim.id)) {
       this.corpseTimers.set(victim.id, CORPSE_LINGER);
-      if (victim.id === this.bossId) {
-        this.bossId = 0;
-        const killer = world.getAircraft(killerId);
-        if (killer && this.playerIds.includes(killer.id)) killer.stats.score += SCORE.bossKill * this.wave;
-      }
+      if (victim.id === this.bossId) this.bossId = 0;
       return;
     }
     if (!this.playerIds.includes(victim.id)) return;
@@ -382,6 +383,8 @@ export class WaveMode implements GameMode {
   private stageCleared(world: World): void {
     const last = this.stage >= this.stages.length - 1;
     const bonus = SCORE.waveClear * this.wave;
+    // The stage is won: hostile missiles still in the air self-destruct.
+    for (const m of world.missiles) if (m.active && m.team === TEAM_ORANGE) defuseMissile(world, m);
     for (const id of this.playerIds) {
       const p = world.getAircraft(id);
       if (!p) continue;

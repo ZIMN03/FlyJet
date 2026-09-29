@@ -1,5 +1,5 @@
 import { TEAM_BLUE } from '../../sim/constants';
-import { angleDiff, approach } from '../../sim/math';
+import { angleDiff, approach, clamp, damp } from '../../sim/math';
 import type { Aircraft } from '../../sim/types';
 import type { World } from '../../sim/world';
 import { PALETTES, drawAirframe, drawExhaust } from './aircraftArt';
@@ -20,7 +20,15 @@ const TRACER_LEN = 0.02;
  */
 export const ART_SCALE = 1.3;
 
-interface AircraftVisual { roll: number }
+interface AircraftVisual { roll: number; bank: number }
+/**
+ * Visual bank: at full turn rate the airframe rolls this far into the turn
+ * (radians). In side view a roll shows as the silhouette thinning, so the art
+ * is never skewed or distorted — only foreshortened, like a real roll.
+ */
+export const BANK_ANGLE = 0.5;
+/** How quickly the visual bank follows the actual turn (1/s). */
+const BANK_RATE = 9;
 
 /** Draws the game world (not menus). Owns camera, particles and HUD instances. */
 export class Renderer {
@@ -75,11 +83,13 @@ export class Renderer {
     const ctx = this.ctx;
     const cam = this.cam;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    this.bg!.setLevel((world.mode as { wave?: number } | null)?.wave ?? 0);
     this.bg!.drawSky(ctx, cam, time);
 
     ctx.save();
     cam.apply(ctx);
     this.bg!.drawWorld(ctx, cam, time);
+    this.bg!.drawWorldClouds(ctx, cam, time);
     const l = cam.left - 100;
     const t = cam.top - 100;
     const r = cam.right + 100;
@@ -101,15 +111,19 @@ export class Renderer {
     const x = a.px + (a.x - a.px) * alpha;
     const y = a.py + (a.y - a.py) * alpha;
     const cam = this.cam;
-    if (x < cam.left - 120 || x > cam.right + 120 || y < cam.top - 120 || y > cam.bottom + 120) return;
+    const margin = 120 * (a.def.artScale ?? 1);
+    if (x < cam.left - margin || x > cam.right + margin || y < cam.top - margin || y > cam.bottom + margin) return;
     const h = a.pheading + angleDiff(a.pheading, a.heading) * alpha;
     let vis = this.visuals.get(a.id);
     if (!vis) {
-      vis = { roll: Math.cos(h) >= 0 ? 1 : -1 };
+      vis = { roll: Math.cos(h) >= 0 ? 1 : -1, bank: 0 };
       this.visuals.set(a.id, vis);
     }
     // Keep the canopy up: roll the airframe through inverted when the nose crosses vertical.
     vis.roll = approach(vis.roll, Math.cos(h) >= 0 ? 1 : -1, dt * ROLL_RATE);
+    // Bank into the turn, eased so entering and leaving a turn is smooth.
+    const bankTarget = clamp(a.turnVel / Math.max(0.1, a.def.turnRate), -1, 1) * BANK_ANGLE;
+    vis.bank += (bankTarget - vis.bank) * damp(BANK_RATE, dt);
     const pal = a.team !== TEAM_BLUE ? PALETTES.orange
       : a.isHuman && a.id === fx.localId ? paintPalette(fx.playerPaint) : PALETTES.blue;
     const hp = a.health / a.def.health;
@@ -120,16 +134,39 @@ export class Renderer {
     if (stealthed) ctx.globalAlpha = fx.localId === a.id ? 0.35 : 0.12 + Math.abs(Math.sin(time * 9)) * 0.08;
     ctx.translate(x, y);
     ctx.rotate(h);
-    ctx.scale(ART_SCALE, ART_SCALE);
-    drawExhaust(ctx, a.def.art, pal, Math.min(1.3, a.speed / a.def.cruiseSpeed), a.boosting, time + a.id, hp < 0.25);
+    const scale = ART_SCALE * (a.def.artScale ?? 1);
+    ctx.scale(scale, scale);
+    // Exhaust intensity: throttle/speed for the normal plume, the burner for the big one.
+    const power = clamp(0.35 * a.throttle + 0.75 * (a.speed / a.def.maxSpeed), 0.2, 1.3);
+    drawExhaust(ctx, a.def.art, pal, power, a.boosting, time + a.id, hp < 0.25);
     drawAirframe(ctx, a.def.art, pal, {
-      roll: vis.roll,
+      roll: vis.roll * Math.cos(vis.bank),
       flash: Math.min(1, (fx.flash.get(a.id) ?? 0) * 12),
       missiles: a.missileAmmo > 0,
       damage: 1 - hp,
     });
     ctx.restore();
 
+    if (a.def.boss && a.godMode) {
+      // Boss phase-change shield: hexagonal energy bubble.
+      const r = a.def.radius * 1.5;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = `rgba(255,170,90,${0.45 + Math.sin(time * 10) * 0.15})`;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      for (let i = 0; i <= 6; i++) {
+        const ang = (i / 6) * Math.PI * 2 + time * 0.8;
+        const px = x + Math.cos(ang) * r;
+        const py = y + Math.sin(ang) * r;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 0.18;
+      ctx.drawImage(this.glow, x - r, y - r, r * 2, r * 2);
+      ctx.restore();
+    }
     if (a.abilityTimer > 0 && a.ability.kind === 'armor') {
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';

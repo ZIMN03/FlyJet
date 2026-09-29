@@ -445,22 +445,38 @@ export function drawAirframe(
   ctx.restore();
 }
 
-/** Engine exhaust plume, drawn additively behind the airframe. */
+/**
+ * Engine exhaust, drawn additively behind the airframe, in three tiers:
+ *   cruise   - short, dim plume
+ *   fast     - longer, brighter plume (power approaching 1)
+ *   burner   - long plume with shock diamonds, a hot nozzle glow and heat shimmer
+ * `power` is roughly 0.2 (idle) .. 1.3 (fast dive).
+ */
 export function drawExhaust(
   ctx: CanvasRenderingContext2D, art: AircraftArtId, pal: ArtPalette,
-  throttle: number, boost: boolean, time: number, sputter: boolean,
+  power: number, boost: boolean, time: number, sputter: boolean,
 ): void {
   const f = AIRFRAMES[art];
   const flicker = 0.85 + Math.sin(time * 61) * 0.08 + Math.sin(time * 37.7) * 0.07;
   if (sputter && Math.sin(time * 23) > 0.55) return; // damaged engine cuts out briefly
-  const len = (8 + throttle * 18 + (boost ? 40 : 0)) * flicker;
-  const w = f.nozzleHalf * (boost ? 1.35 : 1);
+  const len = (6 + power * 22 + (boost ? 46 : 0)) * flicker;
+  const w = f.nozzleHalf * (boost ? 1.4 : 0.85 + power * 0.2);
   const x0 = f.nozzleX - 3.5;
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
+  // Nozzle glow: brightens with power, flares with the burner.
+  const glowR = f.nozzleHalf * (boost ? 4.2 : 1.6 + power * 1.4);
+  const glow = ctx.createRadialGradient(x0, 0, 0, x0, 0, glowR);
+  glow.addColorStop(0, pal.flameGlow);
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.globalAlpha = boost ? 0.55 : 0.18 + power * 0.18;
+  ctx.fillStyle = glow;
+  ctx.fillRect(x0 - glowR, -glowR, glowR * 2, glowR * 2);
+  ctx.globalAlpha = 1;
+  // Plume.
   const g = ctx.createLinearGradient(x0, 0, x0 - len, 0);
   g.addColorStop(0, pal.flameCore);
-  g.addColorStop(0.25, pal.flameGlow);
+  g.addColorStop(boost ? 0.3 : 0.2, pal.flameGlow);
   g.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = g;
   ctx.beginPath();
@@ -482,6 +498,23 @@ export function drawExhaust(
       ctx.lineTo(cx - s, 0);
       ctx.lineTo(cx, s * 0.7);
       ctx.fill();
+    }
+  }
+  if (power > 0.7 || boost) {
+    // Heat shimmer: faint wavering lines trailing the plume.
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = boost ? 0.07 : 0.035;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 0.6;
+    for (let k = -1; k <= 1; k += 2) {
+      ctx.beginPath();
+      for (let i = 0; i <= 5; i++) {
+        const px = x0 - len * 0.7 - i * len * 0.1;
+        const py = k * w * 0.5 + Math.sin(time * 30 + i * 1.3 + k) * (0.5 + i * 0.12);
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
     }
   }
   ctx.restore();
