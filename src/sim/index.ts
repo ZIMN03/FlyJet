@@ -13,3 +13,4 @@ export { WaveMode } from './modes/waves';
 export type { GameMode, MatchPhase } from './modes/mode';
 export { chooseSpawn, spawnAircraft } from './systems/spawn';
 export { applyDamage } from './systems/damage';
+export { AttractMode } from './modes/attract';

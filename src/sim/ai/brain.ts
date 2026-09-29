@@ -166,9 +166,10 @@ export class AiBrain {
         sx = Math.cos(pick);
         sy = Math.sin(pick);
         const md = self.incomingMissileDist;
-        boost = md > 450 && self.boostEnergy > 10;
-        // Late brake-turn makes the missile overshoot — only skilled pilots time it.
-        brake = p.brakeTurns && md < 320;
+        // Afterburner + hard break is what beats a missile; timing the break is the skill.
+        // Out of energy, skilled pilots fall back to a brake-turn as a last resort.
+        boost = self.boostEnergy > 5;
+        brake = !boost && p.brakeTurns && md < 320;
         if (md < FLARE_TRIGGER_DIST && !this.flareRolled) {
           this.flareRolled = true;
           if (world.rng.next() < p.flareSkill) cmd.buttons |= Button.Flare;

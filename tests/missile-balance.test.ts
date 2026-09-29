@@ -35,13 +35,35 @@ describe('missile balance', () => {
   });
 
   it('a well-timed boosted break turn evades', () => {
-    for (const d of [350, 450, 600]) {
+    for (const d of [300, 450, 600, 800]) {
       expect(tailShot({ sx: 0, sy: -1, buttons: Button.Boost, triggerDist: d })).toBe(false);
     }
   });
 
   it('a break turn that is far too late still gets hit', () => {
     expect(tailShot({ sx: 0, sy: -1, buttons: Button.Boost, triggerDist: 120 })).toBe(true);
+    expect(tailShot({ sx: 0, sy: -1, buttons: Button.Boost, triggerDist: 200 })).toBe(true);
+  });
+
+  it('breaking far too early lets the missile re-acquire', () => {
+    expect(tailShot({ sx: 0, sy: -1, buttons: Button.Boost, triggerDist: 1250 })).toBe(true);
+  });
+
+  it('a turn without afterburner is not enough from dead astern (flares are the free counter)', () => {
+    expect(tailShot({ sx: 0, sy: -1, buttons: 0, triggerDist: 500 })).toBe(true);
+  });
+
+  it('a missile that burns out fizzles without splash damage', () => {
+    const { world, p, e } = duelSetup(1300);
+    run(world, 1 / 60, new Map([[p.id, cmd({ buttons: Button.Missile })]]));
+    const m = world.missiles.find((mm) => mm.active)!;
+    m.life = 0.01;
+    e.x = e.px = m.x + 40;
+    e.y = e.py = m.y;
+    const before = e.health;
+    run(world, 2 / 60);
+    expect(m.active).toBe(false);
+    expect(e.health).toBe(before);
   });
 
   it('out-running the missile with afterburner early escapes (speed counterplay)', () => {

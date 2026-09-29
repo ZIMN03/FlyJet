@@ -80,8 +80,17 @@ export function updateMissiles(world: World, dt: number): void {
       explodeMissile(world, m);
       continue;
     }
-    if (m.life <= 0) explodeMissile(world, m);
+    if (m.life <= 0) fizzleMissile(world, m);
   }
+}
+
+/**
+ * Fuel burnout: the missile self-destructs harmlessly. Out-running a missile
+ * is a deliberate counter, so it must not still deal splash damage at the end.
+ */
+function fizzleMissile(world: World, m: Missile): void {
+  m.active = false;
+  world.emit({ type: 'missileExplode', missileId: m.id, x: m.x, y: m.y, radius: 0, water: false });
 }
 
 function steerMissile(world: World, m: Missile, dt: number): void {
