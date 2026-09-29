@@ -3,6 +3,7 @@ import { sanitizeCommand, updateFlight } from './systems/flight';
 import { applyBoundaries, applyTerrainCollision } from './systems/boundary';
 import { updateLock, updateWeapons } from './systems/weapons';
 import { updateBullets, updateFlares, updateMissiles, updateThreats } from './systems/projectiles';
+import { updateAircraftCollisions } from './systems/collision';
 import { emptyCommand, type InputCommand } from './types';
 import type { World } from './world';
 
@@ -55,6 +56,7 @@ export function stepWorld(world: World, commands: ReadonlyMap<number, InputComma
     if (a.alive && combat) updateLock(world, a, dt);
   }
 
+  updateAircraftCollisions(world, dt);
   updateBullets(world, dt);
   updateMissiles(world, dt);
   updateFlares(world, dt);

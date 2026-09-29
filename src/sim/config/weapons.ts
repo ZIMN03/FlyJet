@@ -14,6 +14,12 @@ export interface GunDef {
   muzzleOffset: number;
   /** Alternating vertical offset between two barrels (0 for single barrel). */
   barrelSpacing: number;
+  /** Heat added per shot (1 = overheated). */
+  heatPerShot: number;
+  /** Heat removed per second while not firing. */
+  coolRate: number;
+  /** Bullets per shot, fanned across `spread` (boss guns). Default 1. */
+  pellets?: number;
 }
 
 export interface MissileDef {
@@ -55,6 +61,8 @@ export const GUNS: Record<string, GunDef> = {
     spread: 0.025,
     muzzleOffset: 34,
     barrelSpacing: 4,
+    heatPerShot: 0.016,
+    coolRate: 0.4,
   },
   plasmaLance: {
     id: 'plasmaLance',
@@ -66,6 +74,8 @@ export const GUNS: Record<string, GunDef> = {
     spread: 0.012,
     muzzleOffset: 34,
     barrelSpacing: 0,
+    heatPerShot: 0.03,
+    coolRate: 0.38,
   },
   heavyCannon: {
     id: 'heavyCannon',
@@ -77,6 +87,8 @@ export const GUNS: Record<string, GunDef> = {
     spread: 0.03,
     muzzleOffset: 38,
     barrelSpacing: 6,
+    heatPerShot: 0.017,
+    coolRate: 0.4,
   },
   scatterGun: {
     id: 'scatterGun',
@@ -88,6 +100,8 @@ export const GUNS: Record<string, GunDef> = {
     spread: 0.045,
     muzzleOffset: 30,
     barrelSpacing: 0,
+    heatPerShot: 0.014,
+    coolRate: 0.45,
   },
 };
 

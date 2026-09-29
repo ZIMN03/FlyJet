@@ -2,7 +2,10 @@ import { angleDiff } from '../math';
 import { Button, LockState, type Aircraft, type InputCommand } from '../types';
 import type { World } from '../world';
 import { applyDamage } from './damage';
+import { creditEvasion } from './projectiles';
 
+/** Guns come back online once cooled to this heat after an overheat. */
+const OVERHEAT_RESUME = 0.35;
 /** Number of flare pellets per deployment. */
 const FLARES_PER_DEPLOY = 4;
 const FLARE_LIFETIME = 2.2;
@@ -70,18 +73,31 @@ export function updateWeapons(world: World, a: Aircraft, cmd: InputCommand, dt: 
 
   // Gun cooldown accumulates negative while held so the fire rate is exact at any tick rate.
   a.gunCooldown -= dt;
-  const firing = combatEnabled && (cmd.buttons & Button.Fire) !== 0;
-  if (!firing && a.gunCooldown < 0) a.gunCooldown = 0;
+  const trigger = combatEnabled && (cmd.buttons & Button.Fire) !== 0;
+  // Cannon heat: sustained fire overheats the guns; they must cool to OVERHEAT_RESUME to fire again.
+  if (a.overheated && a.gunHeat <= OVERHEAT_RESUME) a.overheated = false;
+  const firing = trigger && !a.overheated;
+  if (!firing) {
+    if (a.gunCooldown < 0) a.gunCooldown = 0;
+    a.gunHeat = Math.max(0, a.gunHeat - a.gun.coolRate * dt);
+  }
   if (!combatEnabled) return;
 
   if (firing) {
     const interval = a.gun.fireInterval / gunFireRateMult(a);
+    // Overcharge vents heat: the cannons can't overheat while it is active.
+    const heatMult = a.abilityTimer > 0 && a.ability.kind === 'overcharge' ? 0 : 1;
     // Cap shots per tick to avoid bursts after a hitch.
     let shots = 0;
     while (a.gunCooldown <= 0 && shots < 3) {
       fireGun(world, a);
       a.gunCooldown += interval;
+      a.gunHeat = Math.min(1, a.gunHeat + a.gun.heatPerShot * heatMult);
       shots++;
+    }
+    if (a.gunHeat >= 1) {
+      a.overheated = true;
+      world.emit({ type: 'overheat', id: a.id });
     }
     a.spawnProtection = 0;
   }
@@ -115,45 +131,68 @@ function activateAbility(world: World, a: Aircraft): void {
     for (const o of world.aircraft) {
       if (!o.alive || o.id === a.id || !world.areEnemies(a, o)) continue;
       const d = Math.hypot(o.x - a.x, o.y - a.y);
-      if (d <= r + o.def.radius) applyDamage(world, o, ab.pulseDamage ?? 0, a.id, 'gun');
+      if (d <= r + o.def.radius) applyDamage(world, o, ab.pulseDamage ?? 0, a.id, 'pulse');
     }
     for (const m of world.missiles) {
       if (!m.active || m.team === a.team) continue;
       if (Math.hypot(m.x - a.x, m.y - a.y) <= r) {
         m.active = false;
         world.emit({ type: 'missileExplode', missileId: m.id, x: m.x, y: m.y, radius: 0, water: false });
+        creditEvasion(world, m);
       }
     }
   }
 }
 
 function fireGun(world: World, a: Aircraft): void {
-  const b = world.allocBullet();
-  if (!b) return;
   const g = a.gun;
+  const pellets = g.pellets ?? 1;
   const cos = Math.cos(a.heading);
   const sin = Math.sin(a.heading);
   a.barrel ^= 1;
   const side = g.barrelSpacing * (a.barrel ? 1 : -1);
-  const angle = a.heading + world.rng.range(-g.spread, g.spread);
-  b.active = true;
-  b.x = b.px = a.x + cos * g.muzzleOffset - sin * side;
-  b.y = b.py = a.y + sin * g.muzzleOffset + cos * side;
-  // Inherit the aircraft's velocity so bullets never appear to lag behind the shooter.
-  b.vx = Math.cos(angle) * g.bulletSpeed + a.vx;
-  b.vy = Math.sin(angle) * g.bulletSpeed + a.vy;
-  b.life = g.bulletLife;
-  b.damage = g.damage * gunDamageMult(a);
-  b.ownerId = a.id;
-  b.team = a.team;
-  a.stats.shotsFired++;
-  world.emit({ type: 'gunFire', id: a.id, x: b.x, y: b.y, angle });
+  let angle = a.heading;
+  for (let i = 0; i < pellets; i++) {
+    const b = world.allocBullet();
+    if (!b) return;
+    // Multi-pellet guns fan evenly across the spread; single guns jitter randomly.
+    angle = pellets > 1
+      ? a.heading + (i / (pellets - 1) - 0.5) * 2 * g.spread
+      : a.heading + world.rng.range(-g.spread, g.spread);
+    b.active = true;
+    b.x = b.px = a.x + cos * g.muzzleOffset - sin * side;
+    b.y = b.py = a.y + sin * g.muzzleOffset + cos * side;
+    // Inherit the aircraft's velocity so bullets never appear to lag behind the shooter.
+    b.vx = Math.cos(angle) * g.bulletSpeed + a.vx;
+    b.vy = Math.sin(angle) * g.bulletSpeed + a.vy;
+    b.life = g.bulletLife;
+    b.damage = g.damage * gunDamageMult(a);
+    b.ownerId = a.id;
+    b.team = a.team;
+    a.stats.shotsFired++;
+  }
+  world.emit({ type: 'gunFire', id: a.id, x: a.x + cos * g.muzzleOffset, y: a.y + sin * g.muzzleOffset, angle: a.heading });
 }
 
 function launchMissile(world: World, a: Aircraft): void {
   if (a.missileAmmo <= 0 || a.missileCooldown > 0) return;
+  // A full lock gives the missile its target immediately; otherwise it flies
+  // straight and picks up the first enemy that comes within range ahead of it.
+  const target = a.lockState === LockState.Locked ? a.lockTargetId : 0;
+  if (!spawnMissile(world, a, target, 0)) return;
+  a.missileAmmo--;
+  a.missileCooldown = a.def.missileCooldown;
+  a.spawnProtection = 0;
+}
+
+/**
+ * Launch one missile from `a` toward `targetId` (0 = unguided search), with an
+ * optional heading offset. Used by normal launches and by boss salvos (which
+ * don't consume the carrier's missile ammo).
+ */
+export function spawnMissile(world: World, a: Aircraft, targetId: number, angleOffset: number): boolean {
   const m = world.allocMissile();
-  if (!m) return;
+  if (!m) return false;
   const d = a.missileDef;
   const cos = Math.cos(a.heading);
   const sin = Math.sin(a.heading);
@@ -165,23 +204,19 @@ function launchMissile(world: World, a: Aircraft): void {
   const belly = cos >= 0 ? 1 : -1;
   m.x = m.px = a.x - sin * MISSILE_HARDPOINT_DROP * belly + cos * 6;
   m.y = m.py = a.y + cos * MISSILE_HARDPOINT_DROP * belly + sin * 6;
-  m.heading = a.heading;
+  m.heading = a.heading + angleOffset;
   m.speed = a.speed + d.launchBoost;
   m.life = d.lifetime;
   m.age = 0;
   m.ownerId = a.id;
   m.team = a.team;
-  // Only a full lock produces a guided missile; otherwise it's dumb-fired.
-  // A full lock gives the missile its target immediately; otherwise it flies
-  // straight and picks up the first enemy that comes within range ahead of it.
-  m.targetId = a.lockState === LockState.Locked ? a.lockTargetId : 0;
+  m.targetId = targetId;
+  m.victimId = targetId;
   m.flareTarget = -1;
-  m.chaseLeft = m.targetId ? d.chaseTime : -1;
-  a.missileAmmo--;
-  a.missileCooldown = a.def.missileCooldown;
-  a.spawnProtection = 0;
+  m.chaseLeft = targetId ? d.chaseTime : -1;
   a.stats.missilesFired++;
   world.emit({ type: 'missileLaunch', id: a.id, missileId: m.id, targetId: m.targetId, x: m.x, y: m.y });
+  return true;
 }
 
 function deployFlares(world: World, a: Aircraft): void {

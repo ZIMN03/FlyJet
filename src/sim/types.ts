@@ -101,6 +101,8 @@ export interface Aircraft {
   heading: number;
   /** Engine speed along heading; velocity chases heading*speed via grip. */
   speed: number;
+  /** Current angular velocity (rad/s). Eases toward the requested turn; drives visual banking. */
+  turnVel: number;
   /** Previous-tick transform for render interpolation. */
   px: number;
   py: number;
@@ -118,6 +120,11 @@ export interface Aircraft {
 
   gunCooldown: number;
   barrel: number;
+  /** Cannon heat 0..1. Reaching 1 overheats the guns until they cool down. */
+  gunHeat: number;
+  overheated: boolean;
+  /** Seconds of immunity to further mid-air collision damage. */
+  collisionImmunity: number;
   missileAmmo: number;
   missileCooldown: number;
   missileRearmTimer: number;
@@ -191,6 +198,8 @@ export interface Missile {
   flareTarget: number;
   /** Seconds of chase left once a target is acquired; < 0 while still searching. */
   chaseLeft: number;
+  /** Aircraft this missile was chasing (kept after decoys) — credited if the missile is evaded. */
+  victimId: number;
 }
 
 export interface Flare {
@@ -223,6 +232,9 @@ export type SimEvent =
   | { type: 'ability'; id: number; ability: string }
   | { type: 'waveStart'; wave: number; enemies: number }
   | { type: 'waveClear'; wave: number; bonus: number }
-  | { type: 'matchEnd'; reason: string };
+  | { type: 'matchEnd'; reason: string }
+  | { type: 'missileEvaded'; id: number; missileId: number; decoyed: boolean }
+  | { type: 'collision'; a: number; b: number; x: number; y: number }
+  | { type: 'overheat'; id: number };
 
-export type DamageSource = 'gun' | 'missile' | 'crash' | 'boundary' | 'debug';
+export type DamageSource = 'gun' | 'missile' | 'crash' | 'collision' | 'boundary' | 'pulse' | 'debug';

@@ -64,6 +64,10 @@ export function spawnAircraft(world: World, a: Aircraft, x: number, y: number, f
   a.throttle = cruiseThrottle(a.def);
   a.stalled = false;
   a.gunCooldown = 0;
+  a.gunHeat = 0;
+  a.overheated = false;
+  a.collisionImmunity = 0;
+  a.turnVel = 0;
   a.missileAmmo = def.missileCapacity;
   a.missileCooldown = 0;
   a.missileRearmTimer = 0;

@@ -106,6 +106,14 @@ export function updateMissiles(world: World, dt: number): void {
 function fizzleMissile(world: World, m: Missile): void {
   m.active = false;
   world.emit({ type: 'missileExplode', missileId: m.id, x: m.x, y: m.y, radius: 0, water: false });
+  creditEvasion(world, m);
+}
+
+/** A missile that was chasing someone and died without hitting counts as evaded by them. */
+export function creditEvasion(world: World, m: Missile): void {
+  if (!m.victimId) return;
+  const v = world.getAircraft(m.victimId);
+  if (v && v.alive) world.emit({ type: 'missileEvaded', id: v.id, missileId: m.id, decoyed: m.flareTarget >= 0 });
 }
 
 /** Pick the closest enemy within acquire range and inside the forward cone. */
@@ -126,6 +134,7 @@ function acquireTarget(world: World, m: Missile): void {
   }
   if (best) {
     m.targetId = best;
+    m.victimId = best;
     m.chaseLeft = d.chaseTime;
   }
 }

@@ -19,8 +19,8 @@ describe('flight model', () => {
     const cmds = new Map([[p.id, cmd({ steerX: -1 })]]);
     stepWorld(world, cmds);
     expect(Math.abs(p.heading)).toBeLessThanOrEqual(p.def.turnRate / 60 + 1e-6);
-    // Full reversal takes roughly PI / turnRate seconds.
-    run(world, Math.PI / p.def.turnRate + 0.2, cmds);
+    // Full reversal takes roughly PI / turnRate seconds (+ a short spin-up and settle).
+    run(world, Math.PI / p.def.turnRate + 0.6, cmds);
     expect(Math.abs(Math.abs(p.heading) - Math.PI)).toBeLessThan(0.05);
   });
 
@@ -49,8 +49,13 @@ describe('flight model', () => {
     run(world, 0.3, new Map([[p.id, cmd({ turn: 1 })]]));
     const h = p.heading;
     expect(h).toBeGreaterThan(0.5);
+    // Release: the turn winds down smoothly (a small overrun), then the heading holds.
+    run(world, 0.3);
+    expect(p.heading - h).toBeGreaterThan(0);
+    expect(p.heading - h).toBeLessThan(0.35);
+    const settled = p.heading;
     run(world, 0.5);
-    expect(p.heading).toBeCloseTo(h, 5);
+    expect(p.heading).toBeCloseTo(settled, 5);
   });
 
   it('a full reversal loops over the top (climbs, never dives)', () => {
