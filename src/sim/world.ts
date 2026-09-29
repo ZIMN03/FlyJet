@@ -55,12 +55,12 @@ export class World {
     this.rng = new Rng(opts.seed);
     this.friendlyFire = opts.friendlyFire ?? false;
     for (let i = 0; i < MAX_BULLETS; i++) {
-      this.bullets.push({ active: false, x: 0, y: 0, px: 0, py: 0, vx: 0, vy: 0, life: 0, damage: 0, ownerId: 0, team: 0 });
+      this.bullets.push({ active: false, x: 0, y: 0, px: 0, py: 0, vx: 0, vy: 0, life: 0, damage: 0, ownerId: 0, team: 0, mark: 0 });
     }
     for (let i = 0; i < MAX_MISSILES; i++) {
       this.missiles.push({
         active: false, id: 0, def: MISSILES.lanceMissile, x: 0, y: 0, px: 0, py: 0, heading: 0, speed: 0,
-        life: 0, age: 0, ownerId: 0, team: 0, targetId: 0, flareTarget: -1, chaseLeft: -1, victimId: 0,
+        life: 0, age: 0, ownerId: 0, team: 0, targetId: 0, flareTarget: -1, chaseLeft: -1, victimId: 0, damageMult: 1,
       });
     }
     for (let i = 0; i < MAX_FLARES; i++) {
@@ -111,6 +111,7 @@ export class World {
       gunCooldown: 0,
       barrel: 0,
       gunHeat: 0,
+      weaponLevel: 1,
       overheated: false,
       collisionImmunity: 0,
       missileAmmo: def.missileCapacity,

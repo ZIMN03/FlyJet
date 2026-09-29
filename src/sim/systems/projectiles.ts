@@ -213,7 +213,7 @@ function explodeMissile(world: World, m: Missile): void {
     const inv = dist > 0.001 ? 1 / dist : 0;
     a.vx += dx * inv * BLAST_KNOCKBACK * f;
     a.vy += dy * inv * BLAST_KNOCKBACK * f;
-    applyDamage(world, a, d.damage * f, m.ownerId, 'missile');
+    applyDamage(world, a, d.damage * m.damageMult * f, m.ownerId, 'missile');
     hitAny = true;
   }
   if (hitAny) {

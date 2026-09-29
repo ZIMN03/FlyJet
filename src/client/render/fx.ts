@@ -1,4 +1,5 @@
 import type { AudioEngine } from '../audio/audio';
+import { WEAPON_MARK_NAMES } from '../../sim/config/weaponPower';
 import { TEAM_BLUE } from '../../sim/constants';
 import type { Aircraft, SimEvent } from '../../sim/types';
 import type { World } from '../../sim/world';
@@ -264,6 +265,15 @@ export class FxDirector {
         this.sfx('levelComplete');
         break;
       }
+      case 'weaponsUpgraded':
+        if (e.id === local) {
+          const mark = WEAPON_MARK_NAMES[e.mark];
+          // A notice rather than a banner: level starts already stack several banners.
+          this.hud?.notice(e.newMark ? `WEAPONS UPGRADED TO ${mark.toUpperCase()}` : 'WEAPONS UPGRADED',
+            `Cannons +${e.gunPct}%  ·  Missiles +${e.missilePct}% damage`);
+          this.sfx('weaponUp');
+        }
+        break;
       case 'missileEvaded':
         if (e.id === local) {
           this.hud?.notice(e.decoyed ? 'MISSILE DECOYED' : 'MISSILE EVADED', '+20 XP');

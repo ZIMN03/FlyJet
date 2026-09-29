@@ -2,6 +2,7 @@ import { AiBrain } from '../ai/brain';
 import { BOSS_PROFILES, BossBrain } from '../ai/boss';
 import { PERSONALITIES } from '../ai/personalities';
 import { AIRCRAFT, type AircraftDef } from '../config/aircraft';
+import { weaponGunDamageMult, weaponMark, weaponMissileDamageMult } from '../config/weaponPower';
 import { COMBAT, SCORE, TEAM_ORANGE } from '../constants';
 import { clamp } from '../math';
 import { defuseMissile } from '../systems/projectiles';
@@ -304,6 +305,17 @@ export class WaveMode implements GameMode {
         p.health = p.def.health;
         p.missileAmmo = p.def.missileCapacity;
         p.flareCharges = p.def.flareCharges;
+      }
+      if (p && level > p.weaponLevel) {
+        // Weapons grow with the level reached: harder-hitting, faster cannons and missiles.
+        const oldMark = weaponMark(p.weaponLevel);
+        p.weaponLevel = level;
+        const mark = weaponMark(level);
+        world.emit({
+          type: 'weaponsUpgraded', id: p.id, level, mark, newMark: mark > oldMark,
+          gunPct: Math.round((weaponGunDamageMult(level) - 1) * 100),
+          missilePct: Math.round((weaponMissileDamageMult(level) - 1) * 100),
+        });
       }
     }
     this.startStage(world);

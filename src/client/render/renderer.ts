@@ -14,6 +14,13 @@ const MAX_DPR = 2;
 /** Visual roll rate when the aircraft reverses direction (1/s). */
 const ROLL_RATE = 6;
 const TRACER_LEN = 0.02;
+/** Friendly tracer look per weapon mark (Mk I..IV): cyan → teal-white → gold → violet-white. */
+const TRACER_MARKS = [
+  { color: '#8ff0ff', width: 3, core: 1.2, len: 1 },
+  { color: '#6fffd8', width: 3.6, core: 1.4, len: 1.15 },
+  { color: '#ffd76a', width: 4.2, core: 1.6, len: 1.3 },
+  { color: '#d9a2ff', width: 4.8, core: 1.9, len: 1.45 },
+];
 /**
  * Airframe art is authored at ~76 units long; drawn larger so silhouettes read
  * clearly at gameplay zoom. Collision radii in the aircraft defs are sized to match.
@@ -213,21 +220,33 @@ export class Renderer {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     ctx.lineCap = 'round';
+    // One batch per team and weapon mark: higher marks fire thicker,
+    // longer and more saturated tracers so the upgrade is visible.
     for (const team of [TEAM_BLUE, 0]) {
-      ctx.strokeStyle = team === TEAM_BLUE ? '#8ff0ff' : '#ffb35a';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      for (const bl of world.bullets) {
-        if (!bl.active || (team === TEAM_BLUE) !== (bl.team === TEAM_BLUE)) continue;
-        const x = bl.px + (bl.x - bl.px) * alpha;
-        const y = bl.py + (bl.y - bl.py) * alpha;
-        ctx.moveTo(x, y);
-        ctx.lineTo(x - bl.vx * TRACER_LEN, y - bl.vy * TRACER_LEN);
+      for (let mark = 0; mark < TRACER_MARKS.length; mark++) {
+        const style = TRACER_MARKS[mark];
+        let any = false;
+        ctx.beginPath();
+        for (const bl of world.bullets) {
+          if (!bl.active || bl.mark !== mark || (team === TEAM_BLUE) !== (bl.team === TEAM_BLUE)) continue;
+          const x = bl.px + (bl.x - bl.px) * alpha;
+          const y = bl.py + (bl.y - bl.py) * alpha;
+          ctx.moveTo(x, y);
+          ctx.lineTo(x - bl.vx * TRACER_LEN * style.len, y - bl.vy * TRACER_LEN * style.len);
+          any = true;
+        }
+        if (!any) continue;
+        // Coloured halo with normal blending (additive would bleach it to white
+        // against bright sky), then an additive white-hot core.
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = team === TEAM_BLUE ? style.color : '#ffb35a';
+        ctx.lineWidth = style.width;
+        ctx.stroke();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = style.core;
+        ctx.stroke();
       }
-      ctx.stroke();
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1.2;
-      ctx.stroke();
     }
     ctx.restore();
   }

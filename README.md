@@ -66,6 +66,13 @@ drones and a critical final phase. Clearing a stage patches your hull and restoc
 missiles; hostile missiles still in the air self-destruct. A new level fully repairs you.
 The sky moves through five times of day as you progress.
 
+**Weapon power:** your weapons grow with the level you reach in a run. Each new level
+adds +12% cannon damage, +10% missile damage and +2.5% fire rate, up to level 15. Faster
+fire never makes the cannons overheat sooner. At levels 4, 7 and 10 the weapons step up
+a mark (Mk II, III, IV) with bolder tracers (teal, gold, violet). The HUD shows the mark
+next to the gun name, and a notice lists the new bonuses. Tuning is in
+`src/sim/config/weaponPower.ts`.
+
 **Rewards and the hangar:** kills (gun, missile or ramming), assists, missile hits,
 missiles evaded, waves cleared, bosses defeated, levels completed and time survived all
 earn score, XP and credits. The results screen itemises them. Credits buy per-aircraft

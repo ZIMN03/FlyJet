@@ -122,6 +122,8 @@ export interface Aircraft {
   barrel: number;
   /** Cannon heat 0..1. Reaching 1 overheats the guns until they cool down. */
   gunHeat: number;
+  /** Weapon power level (1 = base); raised as the pilot reaches higher levels. */
+  weaponLevel: number;
   overheated: boolean;
   /** Seconds of immunity to further mid-air collision damage. */
   collisionImmunity: number;
@@ -176,6 +178,8 @@ export interface Bullet {
   damage: number;
   ownerId: number;
   team: number;
+  /** Weapon mark of the shooter (0..3), for tracer visuals only. */
+  mark: number;
 }
 
 export interface Missile {
@@ -200,6 +204,8 @@ export interface Missile {
   chaseLeft: number;
   /** Aircraft this missile was chasing (kept after decoys) — credited if the missile is evaded. */
   victimId: number;
+  /** Damage multiplier from the shooter's weapon level at launch. */
+  damageMult: number;
 }
 
 export interface Flare {
@@ -240,6 +246,8 @@ export type SimEvent =
   | { type: 'bossIncoming'; name: string; seconds: number }
   | { type: 'contact'; count: number; bearing: number }
   | { type: 'stageStart'; level: number; stage: number; stages: number; label: string }
-  | { type: 'levelComplete'; level: number; bonus: number; time: number };
+  | { type: 'levelComplete'; level: number; bonus: number; time: number }
+  /** A pilot's weapons got stronger (percentages are totals over base). */
+  | { type: 'weaponsUpgraded'; id: number; level: number; mark: number; newMark: boolean; gunPct: number; missilePct: number };
 
 export type DamageSource = 'gun' | 'missile' | 'crash' | 'collision' | 'boundary' | 'pulse' | 'debug';

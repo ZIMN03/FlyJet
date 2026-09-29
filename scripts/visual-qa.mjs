@@ -42,6 +42,13 @@ try {
     await wait(5000);
     await page.screenshot({ path: `${OUT}/vqa-level${lvl}.png` });
   }
+  // Weapon power: level 7 reaches Mk III — banner, HUD mark and gold tracers.
+  // Go through the real level-complete path so the upgrade event reaches the FX.
+  await page.evaluate(() => { const m = window.aerovant.session.mode; m.wave = 6; m.phase = 'levelComplete'; m.phaseTimer = 0.05; });
+  await page.keyboard.down('Space');
+  await wait(900);
+  await page.screenshot({ path: `${OUT}/vqa-weapons-mk3.png` });
+  await page.keyboard.up('Space');
   await jump(1, 2);
   await wait(6000);
   await page.screenshot({ path: `${OUT}/vqa-warden.png` });

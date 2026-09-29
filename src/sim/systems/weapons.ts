@@ -1,4 +1,5 @@
 import { angleDiff } from '../math';
+import { weaponFireRateMult, weaponGunDamageMult, weaponMark, weaponMissileDamageMult } from '../config/weaponPower';
 import { Button, LockState, type Aircraft, type InputCommand } from '../types';
 import type { World } from '../world';
 import { applyDamage } from './damage';
@@ -24,12 +25,14 @@ function pressed(a: Aircraft, cmd: InputCommand, b: Button): boolean {
 }
 
 function gunFireRateMult(a: Aircraft): number {
-  return a.abilityTimer > 0 && a.ability.kind === 'overcharge' ? a.ability.fireRateMult ?? 1 : 1;
+  const overcharge = a.abilityTimer > 0 && a.ability.kind === 'overcharge' ? a.ability.fireRateMult ?? 1 : 1;
+  return overcharge * weaponFireRateMult(a.weaponLevel);
 }
 
 function gunDamageMult(a: Aircraft): number {
   const upgrade = a.def.gunDamageMult ?? 1;
-  return upgrade * (a.abilityTimer > 0 && a.ability.kind === 'overcharge' ? a.ability.damageMult ?? 1 : 1);
+  const overcharge = a.abilityTimer > 0 && a.ability.kind === 'overcharge' ? a.ability.damageMult ?? 1 : 1;
+  return upgrade * overcharge * weaponGunDamageMult(a.weaponLevel);
 }
 
 /** Terrain line-of-sight between two points (sampled). Terrain is a counter to lock-ons. */
@@ -93,7 +96,8 @@ export function updateWeapons(world: World, a: Aircraft, cmd: InputCommand, dt: 
     while (a.gunCooldown <= 0 && shots < 3) {
       fireGun(world, a);
       a.gunCooldown += interval;
-      a.gunHeat = Math.min(1, a.gunHeat + a.gun.heatPerShot * heatMult);
+      // Faster fire from weapon level doesn't make the guns overheat sooner.
+      a.gunHeat = Math.min(1, a.gunHeat + (a.gun.heatPerShot * heatMult) / weaponFireRateMult(a.weaponLevel));
       shots++;
     }
     if (a.gunHeat >= 1) {
@@ -168,6 +172,7 @@ function fireGun(world: World, a: Aircraft): void {
     b.vy = Math.sin(angle) * g.bulletSpeed + a.vy;
     b.life = g.bulletLife;
     b.damage = g.damage * gunDamageMult(a);
+    b.mark = weaponMark(a.weaponLevel);
     b.ownerId = a.id;
     b.team = a.team;
     a.stats.shotsFired++;
@@ -215,6 +220,7 @@ export function spawnMissile(world: World, a: Aircraft, targetId: number, angleO
   m.victimId = targetId;
   m.flareTarget = -1;
   m.chaseLeft = targetId ? d.chaseTime : -1;
+  m.damageMult = weaponMissileDamageMult(a.weaponLevel);
   a.stats.missilesFired++;
   world.emit({ type: 'missileLaunch', id: a.id, missileId: m.id, targetId: m.targetId, x: m.x, y: m.y });
   return true;

@@ -8,7 +8,7 @@ export type Sfx =
   | 'gun' | 'gunEnemy' | 'hitConfirm' | 'hitCrit' | 'hurt' | 'missileLaunch' | 'explosionSmall'
   | 'explosionBig' | 'flare' | 'lockOn' | 'ability' | 'splash' | 'crash' | 'spawn'
   | 'uiMove' | 'uiSelect' | 'uiBack' | 'countdown' | 'go' | 'waveStart' | 'waveClear' | 'kill' | 'defeat'
-  | 'levelStart' | 'levelComplete' | 'contact' | 'bossWarning' | 'shield' | 'evaded' | 'collision' | 'overheat';
+  | 'levelStart' | 'levelComplete' | 'contact' | 'bossWarning' | 'shield' | 'evaded' | 'collision' | 'overheat' | 'weaponUp';
 
 /** Distance (world units) at which spatial sounds fade out completely. */
 const HEARING_RANGE = 2600;
@@ -372,6 +372,13 @@ export class AudioEngine {
         this.burst(0.4, 1, 'lowpass', 1200, 120, 1, out);
         this.tone(160, 0.25, 'square', 0.12, 60, 0, out);
         this.tone(900, 0.12, 'square', 0.05, 500, 0.02, out);
+        break;
+      case 'weaponUp':
+        // Rising power-up arpeggio over a mechanical "rack" click.
+        this.burst(0.08, 0.25, 'highpass', 4000, 2500, 0.3, out);
+        this.tone(440, 0.14, 'square', 0.07, 440, 0.05, out);
+        this.tone(660, 0.14, 'square', 0.07, 660, 0.15, out);
+        this.tone(880, 0.3, 'square', 0.08, 1320, 0.25, out);
         break;
       case 'overheat':
         this.burst(0.9, 0.35, 'highpass', 5000, 3000, 0.4, out);

@@ -1,4 +1,5 @@
 import { clamp } from '../../sim/math';
+import { WEAPON_MARK_NAMES, weaponMark } from '../../sim/config/weaponPower';
 import { PHYSICS, TEAM_BLUE } from '../../sim/constants';
 import { cruiseThrottle } from '../../sim/systems/flight';
 import { LockState, type Aircraft } from '../../sim/types';
@@ -509,8 +510,20 @@ export class Hud {
     ctx.fillStyle = COL.dim;
     ctx.fillText(`BURNER [${v.keyLabel('boost')}]`, px, py);
     ctx.fillStyle = me.overheated ? COL.danger : COL.dim;
-    // Weapon name doubles as the heat bar label (e.g. "PULSE CANNON").
-    ctx.fillText(me.overheated ? 'OVERHEATED' : me.gun.name.replace(/^Twin /, '').toUpperCase(), px + half + 12 * u, py);
+    // Weapon name doubles as the heat bar label (e.g. "PULSE CANNON"); from
+    // level 2 the weapon mark follows it (shortening the name if needed).
+    const hx = px + half + 12 * u;
+    if (me.overheated) ctx.fillText('OVERHEATED', hx, py);
+    else {
+      let gunName = me.gun.name.replace(/^Twin /, '').toUpperCase();
+      if (me.weaponLevel > 1) {
+        const mark = ` ${WEAPON_MARK_NAMES[weaponMark(me.weaponLevel)].toUpperCase()}`;
+        if (ctx.measureText(gunName + mark).width > half) gunName = gunName.split(' ')[0];
+        ctx.fillText(gunName, hx, py);
+        ctx.fillStyle = COL.good;
+        ctx.fillText(mark, hx + ctx.measureText(gunName).width, py);
+      } else ctx.fillText(gunName, hx, py);
+    }
     py += 9 * u;
     const bfrac = me.boostEnergy / me.def.afterburnerCapacity;
     this.bar(ctx, px, py, half, 7 * u, bfrac, me.boostEnergy < me.def.afterburnerMinStart ? COL.warn : me.boosting ? '#ffffff' : COL.burner, 0);
