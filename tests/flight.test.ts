@@ -95,7 +95,7 @@ describe('flight model', () => {
     expect(c.turn).toBe(1);
     expect(c.steerX).toBe(0);
     expect(Math.hypot(c.steerX, c.steerY)).toBeLessThanOrEqual(1 + 1e-9);
-    expect(c.buttons).toBe(0x3f);
+    expect(c.buttons).toBe(0xff); // 8 defined buttons; anything else is stripped
   });
 
   it('crashing into the sea damages and bounces instead of tunnelling', () => {

@@ -1,5 +1,6 @@
 import { PHYSICS } from '../constants';
 import { angleDiff, approach, clamp, damp } from '../math';
+import type { AircraftDef } from '../config/aircraft';
 import { Button, type Aircraft, type InputCommand } from '../types';
 import type { World } from '../world';
 
@@ -11,6 +12,34 @@ const REVERSAL_THRESHOLD = 0.2;
 const COAST_DRAG = 0.35;
 /** Extra acceleration multiplier while the afterburner is lit. */
 const BOOST_ACCEL_MULT = 1.7;
+
+// --- Throttle & stall ---
+/** Throttle travel per second while up/down is held. */
+const THROTTLE_RATE = 0.9;
+/** Engine speed at zero throttle, as a fraction of the stall speed (def.minSpeed). */
+const IDLE_SPEED_FRACTION = 0.35;
+/** Up to this much extra turn rate as speed falls from cruise toward zero: slower = tighter turns. */
+const SLOW_TURN_BONUS = 0.7;
+/** Turn-rate multiplier while stalled: the nose can be whipped around ("stall flip"). */
+const STALL_TURN_MULT = 1.9;
+/** How fast the nose falls toward the ground while stalled and not being turned, rad/s. */
+const STALL_NOSE_DROP = 1.7;
+/** Stalled wings stop carrying the aircraft: gravity pulls it down, grip is poor. */
+const STALL_GRAVITY = 420;
+const STALL_GRIP_MULT = 0.25;
+/** Must regain this multiple of stall speed to recover (hysteresis prevents flicker). */
+const STALL_RECOVERY = 1.08;
+const MIN_SPEED_FLOOR = 40;
+
+function idleSpeed(def: AircraftDef): number {
+  return def.minSpeed * IDLE_SPEED_FRACTION;
+}
+
+/** Throttle setting whose target speed is the aircraft's cruise speed (the default). */
+export function cruiseThrottle(def: AircraftDef): number {
+  const idle = idleSpeed(def);
+  return clamp((def.cruiseSpeed - idle) / (def.maxSpeed - idle), 0, 1);
+}
 
 /**
  * Sanitise a command in place. Anything coming from a remote client must pass
@@ -25,7 +54,7 @@ export function sanitizeCommand(cmd: InputCommand): void {
     cmd.steerX /= m;
     cmd.steerY /= m;
   }
-  cmd.buttons &= 0x3f;
+  cmd.buttons &= 0xff;
 }
 
 export function speedMultiplier(a: Aircraft): number {
@@ -34,8 +63,8 @@ export function speedMultiplier(a: Aircraft): number {
 }
 
 /**
- * Arcade flight model: the nose turns toward the stick direction at a limited
- * rate, engine speed chases a target (cruise / boost / brake), and velocity
+ * Arcade flight model: the nose turns at a limited rate, engine speed chases a
+ * target set by the throttle (or afterburner / brake), and velocity
  * chases nose*speed with a grip factor so the aircraft carries momentum and
  * drifts slightly through turns.
  */
@@ -56,10 +85,22 @@ export function updateFlight(world: World, a: Aircraft, cmd: InputCommand, dt: n
   }
   a.braking = (cmd.buttons & Button.Brake) !== 0 && !a.boosting;
 
+  // --- Throttle ---
+  if (cmd.buttons & Button.ThrottleUp) a.throttle = Math.min(1, a.throttle + THROTTLE_RATE * dt);
+  if (cmd.buttons & Button.ThrottleDown) a.throttle = Math.max(0, a.throttle - THROTTLE_RATE * dt);
+
+  // --- Stall state (with hysteresis) ---
+  if (a.boosting) a.stalled = false;
+  else if (a.stalled) a.stalled = a.speed < def.minSpeed * STALL_RECOVERY;
+  else a.stalled = a.speed < def.minSpeed;
+
   // --- Turning ---
   let turnRate = def.turnRate;
   if (a.boosting) turnRate *= def.boostTurnPenalty;
   if (a.braking) turnRate *= def.brakeTurnBonus;
+  // Slower flight turns tighter: both a smaller radius (lower speed) and a higher rate.
+  turnRate *= 1 + SLOW_TURN_BONUS * clamp((def.cruiseSpeed - a.speed) / def.cruiseSpeed, 0, 1);
+  if (a.stalled) turnRate *= STALL_TURN_MULT;
   const steerMag = Math.hypot(cmd.steerX, cmd.steerY);
   if (Math.abs(cmd.turn) > STEER_DEADZONE) {
     // Rotation controls: holding a direction keeps turning, so the aircraft
@@ -80,11 +121,17 @@ export function updateFlight(world: World, a: Aircraft, cmd: InputCommand, dt: n
     a.heading += clamp(diff, -maxTurn, maxTurn);
     if (a.heading > Math.PI) a.heading -= Math.PI * 2;
     else if (a.heading < -Math.PI) a.heading += Math.PI * 2;
+  } else if (a.stalled) {
+    // Hands off in a stall: the nose falls toward the ground (which also rebuilds speed).
+    const maxDrop = STALL_NOSE_DROP * dt;
+    a.heading += clamp(angleDiff(a.heading, Math.PI / 2), -maxDrop, maxDrop);
   }
 
   // --- Engine speed ---
   const mult = speedMultiplier(a);
-  const target = a.braking ? def.minSpeed : a.boosting ? def.boostSpeed : def.cruiseSpeed;
+  const idle = idleSpeed(def);
+  const throttleSpeed = idle + (def.maxSpeed - idle) * a.throttle;
+  const target = a.boosting ? def.boostSpeed : a.braking ? Math.min(def.minSpeed, throttleSpeed) : throttleSpeed;
   const targetSpeed = target * mult;
   if (a.speed < targetSpeed) {
     a.speed = approach(a.speed, targetSpeed, def.acceleration * (a.boosting ? BOOST_ACCEL_MULT : 1) * mult * dt);
@@ -94,12 +141,13 @@ export function updateFlight(world: World, a: Aircraft, cmd: InputCommand, dt: n
   // Energy trade: diving gains speed, climbing bleeds it.
   a.speed += Math.sin(a.heading) * PHYSICS.gravitySpeedEffect * dt;
   const cap = (a.boosting ? def.boostSpeed : def.maxSpeed) * mult;
-  a.speed = clamp(a.speed, def.minSpeed * 0.85, cap);
+  a.speed = clamp(a.speed, MIN_SPEED_FLOOR, cap);
 
   // --- Velocity & position ---
-  const k = damp(def.grip, dt);
+  const k = damp(def.grip * (a.stalled ? STALL_GRIP_MULT : 1), dt);
   a.vx += (Math.cos(a.heading) * a.speed - a.vx) * k;
   a.vy += (Math.sin(a.heading) * a.speed - a.vy) * k;
+  if (a.stalled) a.vy += STALL_GRAVITY * dt;
   a.x += a.vx * dt;
   a.y += a.vy * dt;
 

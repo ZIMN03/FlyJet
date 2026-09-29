@@ -358,7 +358,7 @@ export class Game {
           scale: this.save.data.settings.hudScale,
           tutorial: this.tutorial.current(me, this.input),
           tip: session.mode?.phase === 'countdown' ? this.tip : '',
-          keyLabel: (a) => this.input.label(a),
+          keyLabel: (a) => (a === 'throttleUp' ? '↑' : this.input.label(a)),
           debugLines: this.debug.overlay ? this.debug.lines(session, this.renderer.particles.count) : null,
           fps: this.save.data.settings.showFps ? this.debug.fps : 0,
         }

@@ -12,6 +12,10 @@ export const enum Button {
   Boost = 1 << 3,
   Brake = 1 << 4,
   Ability = 1 << 5,
+  /** Held: open the throttle. The throttle setting persists after release. */
+  ThrottleUp = 1 << 6,
+  /** Held: close the throttle. */
+  ThrottleDown = 1 << 7,
 }
 
 /**
@@ -107,6 +111,10 @@ export interface Aircraft {
   boosting: boolean;
   boostRegenDelay: number;
   braking: boolean;
+  /** Throttle setting 0..1 (persistent). Sets the engine's target speed. */
+  throttle: number;
+  /** Below stall speed: the nose drops and the airframe can be flipped quickly. */
+  stalled: boolean;
 
   gunCooldown: number;
   barrel: number;

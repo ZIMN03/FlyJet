@@ -100,6 +100,8 @@ export class World {
       boosting: false,
       boostRegenDelay: 0,
       braking: false,
+      throttle: 0,
+      stalled: false,
       gunCooldown: 0,
       barrel: 0,
       missileAmmo: def.missileCapacity,

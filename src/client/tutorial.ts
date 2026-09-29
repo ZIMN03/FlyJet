@@ -19,6 +19,11 @@ const STEPS: Step[] = [
     done: (t) => t.steerTime > 1.6,
   },
   {
+    id: 'throttle', text: 'Throttle — slow down to turn tighter; too slow and you stall (flip it!)', required: false,
+    keys: () => '↑  ↓',
+    done: (t) => t.throttleTime > 0.6,
+  },
+  {
     id: 'flare', text: 'MISSILE ON YOUR TAIL — it chases for 10 seconds. Hit FLARES!', required: false,
     keys: (i) => i.labels('flare'),
     when: (a) => a.incomingMissileDist < 1400,
@@ -60,6 +65,7 @@ export class TutorialTracker {
   steerTime = 0;
   boostTime = 0;
   brakeTime = 0;
+  throttleTime = 0;
   private readonly completed = new Set<string>();
   private elapsed = 0;
   finished = false;
@@ -73,6 +79,7 @@ export class TutorialTracker {
     if (c) this.steerTime += dt;
     if (a.boosting) this.boostTime += dt;
     if (a.braking) this.brakeTime += dt;
+    if (input.isDown('up') || input.isDown('down')) this.throttleTime += dt;
     for (const s of STEPS) if (!this.completed.has(s.id) && s.done(this, a)) this.completed.add(s.id);
     if (STEPS.every((s) => !s.required || this.completed.has(s.id))) this.finished = true;
   }

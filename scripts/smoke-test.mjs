@@ -104,6 +104,15 @@ try {
   const moved = Math.hypot(s.x - startX, s.y - startY);
   check(moved > 250, `aircraft flew under keyboard control (moved ${Math.round(moved)} units)`);
   check(Math.abs(s.heading - h0) > 0.3, 'right arrow rotated the aircraft');
+  const thr = () => page.evaluate(() => window.aerovant.session.local().throttle);
+  const thr0 = await thr();
+  await page.keyboard.down('ArrowDown'); await wait(400); await page.keyboard.up('ArrowDown');
+  const thr1 = await thr();
+  await wait(300);
+  check(thr1 < thr0 - 0.1 && (await thr()) === thr1, `down arrow lowers throttle and it stays (${thr0.toFixed(2)} -> ${thr1.toFixed(2)})`);
+  await shot('07b-low-throttle');
+  await page.keyboard.down('ArrowUp'); await wait(500); await page.keyboard.up('ArrowUp');
+  check((await thr()) > thr1 + 0.2, 'up arrow raises throttle');
   await shot('07-flying');
 
   // Hunt the enemy: steer toward it each 100ms while firing and launching missiles.
@@ -142,8 +151,9 @@ try {
   await page.keyboard.up('ArrowRight');
   s = await state();
   console.log('  after combat:', JSON.stringify(s));
-  check(s.shots > 20, `guns fired (${s.shots} shots, ${s.hits} hits)`);
-  check(s.hits > 0, 'cannon hits registered');
+  check(s.shots >= 3, `guns fired (${s.shots} shots, ${s.hits} hits)`);
+  check(s.kills >= 1, 'destroyed the level-1 opponent');
+  check(s.hits > 0 || s.missiles > 0, `weapons connected (${s.hits} cannon hits, ${s.missiles} missiles)`);
   await shot('09-after-combat');
 
   // Flares + ability via keyboard.

@@ -1,5 +1,6 @@
 import { clamp } from '../../sim/math';
 import { PHYSICS, TEAM_BLUE } from '../../sim/constants';
+import { cruiseThrottle } from '../../sim/systems/flight';
 import { LockState, type Aircraft } from '../../sim/types';
 import type { World } from '../../sim/world';
 import type { WaveMode } from '../../sim/modes/waves';
@@ -39,7 +40,7 @@ export interface HudView {
   showMinimap: boolean;
   scale: number;
   tutorial: { text: string; keys: string } | null;
-  keyLabel: (action: 'missile' | 'flare' | 'ability' | 'boost') => string;
+  keyLabel: (action: 'missile' | 'flare' | 'ability' | 'boost' | 'throttleUp') => string;
   debugLines: string[] | null;
   /** Gameplay tip shown during the pre-match countdown. */
   tip: string;
@@ -345,6 +346,9 @@ export class Hud {
     if (me.outOfBounds) {
       const left = Math.max(0, PHYSICS.boundaryGraceTime - me.outOfBoundsTime);
       this.warningLabel(ctx, W / 2, H * 0.34, 'RETURN TO COMBAT AREA', left > 0 ? `Hull damage in ${left.toFixed(1)}s` : 'Taking damage', COL.warn, u);
+    } else if (me.stalled) {
+      this.warningLabel(ctx, W / 2, H * 0.34, 'STALL', `Flip the nose now, or dive / throttle up [${v.keyLabel('throttleUp')}] to recover`,
+        blink ? COL.danger : COL.warn, u);
     } else {
       const clearance = v.world.terrain.clearance(me.x, me.y);
       if (clearance < 260 && me.vy > 160 && blink) this.warningLabel(ctx, W / 2, H * 0.34, 'PULL UP', '', COL.warn, u);
@@ -409,7 +413,7 @@ export class Hud {
   }
 
   private drawPlayerPanel(ctx: CanvasRenderingContext2D, v: HudView, me: Aircraft, u: number, H: number): void {
-    const pw = 330 * u;
+    const pw = 360 * u;
     const ph = 124 * u;
     const x = 20 * u;
     const y = H - ph - 20 * u;
@@ -457,17 +461,36 @@ export class Hud {
         ctx.fillRect(mx, py + 7 * u - 14 * u * f, 5 * u, 14 * u * f);
       }
     }
-    const fx = px + 150 * u;
+    const fx = px + 112 * u;
     ctx.fillStyle = COL.dim;
-    ctx.fillText(`FLR [${v.keyLabel('flare')}]`, fx - 4 * u, py + 20 * u);
+    ctx.fillText(`FLR [${v.keyLabel('flare')}]`, fx, py + 20 * u);
     for (let i = 0; i < me.def.flareCharges; i++) {
       ctx.fillStyle = i < me.flareCharges ? COL.warn : 'rgba(255,255,255,0.15)';
       ctx.beginPath();
-      ctx.arc(fx + 58 * u + i * 13 * u, py + 20 * u, 4 * u, 0, Math.PI * 2);
+      ctx.arc(fx + 56 * u + i * 13 * u, py + 20 * u, 4 * u, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.fillStyle = COL.dim;
     ctx.fillText(`SPD ${Math.round(Math.hypot(me.vx, me.vy))}`, px, py + 20 * u);
+
+    // Throttle gauge (vertical), with a tick at the cruise setting.
+    const tx = x + 236 * u;
+    const ty = y + 14 * u;
+    const th = ph - 44 * u;
+    const tw = 10 * u;
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.fillRect(tx, ty, tw, th);
+    ctx.fillStyle = me.stalled ? COL.danger : me.throttle < cruiseThrottle(me.def) * 0.6 ? COL.warn : COL.ally;
+    ctx.fillRect(tx, ty + th * (1 - me.throttle), tw, th * me.throttle);
+    const cy = ty + th * (1 - cruiseThrottle(me.def));
+    ctx.fillStyle = COL.text;
+    ctx.fillRect(tx - 3 * u, cy - 1, tw + 6 * u, 2);
+    ctx.textAlign = 'center';
+    ctx.font = this.font(10 * u, 700);
+    ctx.fillStyle = me.stalled ? COL.danger : COL.dim;
+    ctx.fillText(me.stalled ? 'STALL' : 'THR', tx + tw / 2, ty + th + 12 * u);
+    ctx.fillText(`${Math.round(me.throttle * 100)}`, tx + tw / 2, ty + th + 24 * u);
+    ctx.textAlign = 'left';
 
     // Ability ring.
     const ax = x + pw - 52 * u;

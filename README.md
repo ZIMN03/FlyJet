@@ -26,6 +26,7 @@ npm run dev        # http://localhost:5173
 | Action           | Keyboard            | Gamepad      |
 | ---------------- | ------------------- | ------------ |
 | Turn             | `←` `→` (or `A` `D`)| Left stick ←→|
+| Throttle         | `↑` `↓` (or `W` `S`)| Left stick ↑↓|
 | Fire cannons     | `Space` / `J`       | RT / A       |
 | Launch missile   | `E` / `K`           | X            |
 | Deploy flares    | `F` / `L`           | B / LB       |
@@ -36,6 +37,9 @@ npm run dev        # http://localhost:5173
 
 Flying needs only two buttons: `←` rotates the nose anticlockwise and `→` clockwise.
 Hold one and the jet keeps turning, flying a full loop. Let go and it flies straight.
+`↑`/`↓` set the throttle, which stays where you leave it. Slower flight turns tighter.
+Below stall speed the nose drops, but you can whip it around fast (a stall flip); dive or
+throttle up to recover.
 Keys can be remapped in **Settings → Controls**.
 
 **Missiles:** without a lock, a missile flies straight and grabs the first enemy that

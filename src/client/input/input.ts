@@ -165,15 +165,23 @@ export class InputManager {
     // Two-button flying: only left/right matter. Left rotates the nose
     // anticlockwise, right clockwise; holding one loops all the way around.
     let turn = (this.keyAction('right') ? 1 : 0) - (this.keyAction('left') ? 1 : 0);
+    // Up/down drive the throttle (held = keeps moving it; the setting persists).
+    let throttle = (this.keyAction('up') ? 1 : 0) - (this.keyAction('down') ? 1 : 0);
     const p = this.pad();
     if (p) {
       const ax = p.axes[0] ?? 0;
+      const ay = p.axes[1] ?? 0;
       if (Math.abs(ax) > STICK_DEADZONE) {
         turn = ax;
         this.lastDevice = 'gamepad';
       } else {
         if (this.padAction(p, 'right')) turn = 1;
         if (this.padAction(p, 'left')) turn = -1;
+      }
+      if (Math.abs(ay) > STICK_DEADZONE * 2) throttle = ay < 0 ? 1 : -1;
+      else {
+        if (this.padAction(p, 'up')) throttle = 1;
+        if (this.padAction(p, 'down')) throttle = -1;
       }
     }
     c.steerX = 0;
@@ -186,6 +194,8 @@ export class InputManager {
     if (this.held('boost')) b |= Button.Boost;
     if (this.held('brake')) b |= Button.Brake;
     if (this.held('ability')) b |= Button.Ability;
+    if (throttle > 0 || this.tapLatch.has('up')) b |= Button.ThrottleUp;
+    if (throttle < 0 || this.tapLatch.has('down')) b |= Button.ThrottleDown;
     this.tapLatch.clear();
     c.buttons = b;
     c.seq = ++this.seq;

@@ -1,4 +1,5 @@
 import { COMBAT } from '../constants';
+import { cruiseThrottle } from './flight';
 import { LockState, type Aircraft } from '../types';
 import type { World } from '../world';
 
@@ -60,6 +61,8 @@ export function spawnAircraft(world: World, a: Aircraft, x: number, y: number, f
   a.boosting = false;
   a.boostRegenDelay = 0;
   a.braking = false;
+  a.throttle = cruiseThrottle(a.def);
+  a.stalled = false;
   a.gunCooldown = 0;
   a.missileAmmo = def.missileCapacity;
   a.missileCooldown = 0;
