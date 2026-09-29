@@ -44,6 +44,12 @@ if it hasn't hit by then it pops harmlessly and disappears. Flares (`F` or the o
 **FLARES** button) pull a chasing missile onto the decoys. These rules are covered by
 `tests/missile-balance.test.ts`.
 
+**Levels and unlocks:** in Endless Skies, level 1 sends one opponent, level 2 sends two,
+and so on. Early opponents are fragile trainees that can't fire missiles; toughness, aim,
+speed and tactics ramp up until level 10 (see `levelDifficulty()` in
+`src/sim/modes/waves.ts`). Reaching a level unlocks aircraft: Swift (3), Titan (5),
+Phantom (7), Nova (10). Every plane can be inspected in the Hangar, locked or not.
+
 ## Architecture
 
 ```
@@ -98,6 +104,5 @@ offline and mutate the local world.
 1. ~~Architecture, flight, camera, guns, AI, missiles, damage, FX, HUD, waves, first map, offline loop~~ (this milestone)
 2. Authoritative Node server (`ws`) running `src/sim`, snapshot protocol, interpolation, prediction and reconciliation, and a local multi-client test harness with latency and packet-loss simulation
 3. Online Sky Duel (2–8 players), reconnect handling, matchmaking queue
-4. Additional aircraft (Swift, Titan, Phantom, Nova) and their abilities
 5. Maps: Tempest Zone, Iron Sky, Crimson Pass, Sunset Stratosphere
 6. Team Battle, zone control, campaign and the Stormbreaker boss

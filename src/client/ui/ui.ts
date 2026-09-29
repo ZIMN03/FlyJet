@@ -1,4 +1,4 @@
-import { AIRCRAFT } from '../../sim/config/aircraft';
+import { AIRCRAFT, PLAYER_AIRCRAFT, isUnlocked } from '../../sim/config/aircraft';
 import { ABILITIES } from '../../sim/config/abilities';
 import { GUNS, MISSILES } from '../../sim/config/weapons';
 import type { AudioEngine } from '../audio/audio';
@@ -34,16 +34,14 @@ export interface ResultsData {
   xpBefore: number;
   xpAfter: number;
   newBest: boolean;
+  /** Names of aircraft unlocked during this match. */
+  unlocked: string[];
 }
 
-/** Roster shown in the hangar; only data-backed airframes are flyable. */
-const ROSTER = [
-  { id: 'viper', name: 'VX-7 Viper', cls: 'Balanced', note: '' },
-  { id: 'swift', name: 'Swift', cls: 'Speed', note: 'Fast, agile, fragile. Slipstream speed burst.' },
-  { id: 'titan', name: 'Titan', cls: 'Heavy', note: 'Armoured gunship. Reinforced plating ability.' },
-  { id: 'phantom', name: 'Phantom', cls: 'Stealth', note: 'Low lock signature. Radar suppression.' },
-  { id: 'nova', name: 'Nova', cls: 'Experimental', note: 'Energy weapons. Pulse discharge.' },
-];
+const LOCK_ICON = `<svg class="lock" viewBox="0 0 16 16" aria-label="Locked" role="img"><rect x="3" y="7" width="10" height="8" rx="1.5" fill="currentColor"/><path d="M5 7V5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>`;
+
+/** Scale used for hangar stat bars (the best value any flyable aircraft reaches). */
+const STAT_SCALE = { boost: 900, cruise: 500, turn: 4, hull: 160, dps: 130, missiles: 8, lock: 1600 };
 
 const ACTION_LABELS: Record<Action, string> = {
   up: 'Menu up', down: 'Menu down', left: 'Turn anticlockwise', right: 'Turn clockwise',
@@ -74,6 +72,8 @@ export class UI {
   private errorText = '';
   private previewRaf = 0;
   private toastTimer = 0;
+  /** Aircraft currently shown in the hangar (any plane can be inspected, locked or not). */
+  private hangarSel = '';
   /** Ignore activations until this time — screens that appear mid-action (results) must not eat a held key. */
   private guardUntil = 0;
 
@@ -205,11 +205,11 @@ export class UI {
     return `<div class="panel pcard side">
       <h2>Pilot</h2>
       <div class="name">${esc(p.callsign)}</div>
-      <div class="lvl">LEVEL ${lv.level}</div>
+      <div class="lvl">RANK ${lv.level}</div>
       <div class="xpbar"><i style="width:${(lv.into / lv.needed) * 100}%"></i></div>
       <div class="kv"><span>XP</span><b>${lv.into} / ${lv.needed}</b></div>
       <div class="kv"><span>Credits</span><b>${Math.floor(p.credits)}</b></div>
-      <div class="kv"><span>Best wave</span><b>${p.stats.bestWave}</b></div>
+      <div class="kv"><span>Highest level</span><b>${p.stats.bestWave}</b></div>
     </div>`;
   }
 
@@ -234,7 +234,7 @@ export class UI {
         <button class="card" data-action="start" data-tutorial="${done ? '0' : '1'}">
           <span class="tag ok">OFFLINE</span>
           <h3>ENDLESS SKIES</h3>
-          <p>Survive escalating waves of hostile interceptors over Azure Coast. Three lives. How far can you push?</p>
+          <p>Level 1 sends one opponent, level 2 sends two, and so on. They start easy and get sharper every level. Three lives. How far can you go?</p>
         </button>
         <button class="card" data-action="start" data-tutorial="1">
           <span class="tag ok">OFFLINE</span>
@@ -256,38 +256,63 @@ export class UI {
     </div></div></div>`;
   }
 
+  private bestLevel(): number {
+    return this.save.data.profile.stats.bestWave;
+  }
+
   private hangarHtml(): string {
-    const def = AIRCRAFT.viper;
+    const prof = this.save.data.profile;
+    const best = this.bestLevel();
+    if (!this.hangarSel) this.hangarSel = prof.favoriteAircraft;
+    const def = AIRCRAFT[this.hangarSel] ?? AIRCRAFT.viper;
+    const unlocked = isUnlocked(def.id, best);
+    const equipped = prof.favoriteAircraft === def.id;
     const gun = GUNS[def.gun];
     const msl = MISSILES[def.missile];
     const ab = ABILITIES[def.ability];
     const stat = (label: string, v: number, max: number, shown: string | number) =>
       `<div class="stat"><span>${label}</span><div class="b"><i style="width:${Math.min(100, (v / max) * 100)}%"></i></div><span>${shown}</span></div>`;
-    const list = ROSTER.map((r) => `<div class="ac-item ${r.id === 'viper' ? 'sel' : ''}">
-        <div>${r.id === 'viper' ? r.name : `${r.name} <span class="tag">LOCKED</span>`}</div>
-        <div class="cls">${r.cls}${r.note ? ` — ${r.note}` : ''}</div></div>`).join('');
+    const list = PLAYER_AIRCRAFT.map((id) => {
+      const a = AIRCRAFT[id];
+      const open = isUnlocked(id, best);
+      const tag = prof.favoriteAircraft === id ? '<span class="tag ok">EQUIPPED</span>'
+        : open ? '' : `<span class="tag">LEVEL ${a.unlockLevel}</span>`;
+      return `<button class="ac-item ${id === def.id ? 'sel' : ''} ${open ? '' : 'locked'}" data-action="hangar-select" data-id="${id}">
+        <div class="ac-name">${open ? '' : LOCK_ICON}${a.name} ${tag}</div>
+        <div class="cls">${a.className}</div></button>`;
+    }).join('');
+    const status = unlocked
+      ? equipped
+        ? '<span class="tag ok">EQUIPPED</span>'
+        : `<button class="mbtn primary equip" data-action="equip" data-id="${def.id}">EQUIP</button>`
+      : '';
+    const lockNote = unlocked ? '' : `<div class="lock-note">
+        <b>Locked.</b> Reach <b>level ${def.unlockLevel}</b> in Endless Skies to unlock the ${def.name}.
+        Level ${def.unlockLevel} means surviving until ${def.unlockLevel} opponents come at you at once.
+        <span>Your best so far: level ${Math.max(0, best)}.</span></div>`;
     return `<div class="screen dim"><div class="center-wrap"><div class="panel wide">
       <h2>Hangar</h2>
       <div class="hangar">
         <div class="ac-list">${list}</div>
         <div>
-          <canvas class="preview" id="preview"></canvas>
-          <div style="display:flex;justify-content:space-between;align-items:baseline;margin:6px 0 10px">
+          <div class="preview-wrap ${unlocked ? '' : 'is-locked'}"><canvas class="preview" id="preview"></canvas></div>
+          <div class="hangar-title">
             <div><div style="font-size:24px;font-weight:800">${def.name}</div><div class="cls" style="color:var(--dim);letter-spacing:.14em;font-size:12px">${def.className.toUpperCase()}</div></div>
-            <span class="tag ok">EQUIPPED</span>
+            ${status}
           </div>
+          ${lockNote}
           <p style="color:var(--dim);margin:0 0 12px;font-size:14px">${def.description}</p>
-          ${stat('TOP SPEED', def.boostSpeed, 900, def.boostSpeed)}
-          ${stat('CRUISE', def.cruiseSpeed, 520, def.cruiseSpeed)}
-          ${stat('TURN RATE', def.turnRate, 4, def.turnRate.toFixed(1))}
-          ${stat('HULL', def.health, 160, def.health)}
-          ${stat('CANNON DPS', gun.damage / gun.fireInterval, 130, Math.round(gun.damage / gun.fireInterval))}
-          ${stat('MISSILES', def.missileCapacity, 8, def.missileCapacity)}
-          ${stat('LOCK RANGE', def.lockRange, 2000, def.lockRange)}
+          ${stat('TOP SPEED', def.boostSpeed, STAT_SCALE.boost, def.boostSpeed)}
+          ${stat('CRUISE', def.cruiseSpeed, STAT_SCALE.cruise, def.cruiseSpeed)}
+          ${stat('TURN RATE', def.turnRate, STAT_SCALE.turn, def.turnRate.toFixed(1))}
+          ${stat('HULL', def.health, STAT_SCALE.hull, def.health)}
+          ${stat('CANNON DPS', gun.damage / gun.fireInterval, STAT_SCALE.dps, Math.round(gun.damage / gun.fireInterval))}
+          ${stat('MISSILES', def.missileCapacity, STAT_SCALE.missiles, def.missileCapacity)}
+          ${stat('LOCK RANGE', def.lockRange, STAT_SCALE.lock, def.lockRange)}
           <div class="kv" style="margin-top:10px"><span>Primary</span><b>${gun.name}</b></div>
           <div class="kv"><span>Secondary</span><b>${msl.name} ×${def.missileCapacity}</b></div>
           <div class="kv"><span>Countermeasure</span><b>Decoy flares ×${def.flareCharges}</b></div>
-          <div class="kv"><span>Ability</span><b>${ab.name} — ${ab.description}</b></div>
+          <div class="kv"><span>Ability</span><b>${ab.name}: ${ab.description}</b></div>
         </div>
       </div>
       <div class="btn-row"><button class="mbtn" data-action="back">BACK</button></div>
@@ -303,14 +328,14 @@ export class UI {
     return `<div class="screen dim"><div class="center-wrap"><div class="panel wide" style="max-width:560px">
       <h2>Pilot profile</h2>
       <div style="font-size:28px;font-weight:800">${esc(p.callsign)}</div>
-      <div class="lvl" style="color:var(--accent-2);font-weight:700;letter-spacing:.14em">LEVEL ${lv.level}</div>
+      <div class="lvl" style="color:var(--accent-2);font-weight:700;letter-spacing:.14em">RANK ${lv.level}</div>
       <div class="xpbar"><i style="width:${(lv.into / lv.needed) * 100}%"></i></div>
       <div class="kv"><span>Favourite aircraft</span><b>${AIRCRAFT[p.favoriteAircraft]?.name ?? 'VX-7 Viper'}</b></div>
       <div class="kv"><span>Matches played</span><b>${s.matches}</b></div>
       <div class="kv"><span>Eliminations</span><b>${s.kills}</b></div>
       <div class="kv"><span>Assists</span><b>${s.assists}</b></div>
       <div class="kv"><span>Times shot down</span><b>${s.deaths}</b></div>
-      <div class="kv"><span>Best wave</span><b>${s.bestWave}</b></div>
+      <div class="kv"><span>Highest level</span><b>${s.bestWave}</b></div>
       <div class="kv"><span>Best score</span><b>${s.bestScore}</b></div>
       <div class="kv"><span>Best streak</span><b>${s.bestStreak}</b></div>
       <div class="kv"><span>Total flight time</span><b>${hrs}h ${mins}m</b></div>
@@ -392,13 +417,14 @@ export class UI {
       <h1>${esc(r.title)}</h1>
       <div class="sub">${esc(r.subtitle)} ${r.newBest ? '<span class="newbest">· NEW PERSONAL BEST</span>' : ''}</div>
       <div class="results-grid">
-        ${box(r.score, 'Score', 0)}${box(r.wave, 'Wave reached', 1)}${box(r.kills, 'Eliminations', 2)}${box(r.assists, 'Assists', 3)}
+        ${box(r.score, 'Score', 0)}${box(r.wave, 'Level reached', 1)}${box(r.kills, 'Eliminations', 2)}${box(r.assists, 'Assists', 3)}
         ${box(r.deaths, 'Shot down', 4)}${box(Math.round(r.damageDealt), 'Damage dealt', 5)}${box(Math.round(r.damageTaken), 'Damage taken', 6)}${box(`${mm}:${ss}`, 'Time survived', 7)}
       </div>
+      ${r.unlocked.length ? `<div class="unlock-banner">New aircraft unlocked: <b>${r.unlocked.map(esc).join(', ')}</b>. Equip it in the Hangar.</div>` : ''}
       <div class="kv"><span>Cannon accuracy</span><b>${Math.round(r.accuracy * 100)}%</b></div>
       <div class="kv"><span>Best streak</span><b>${r.bestStreak}</b></div>
       <div class="reward" style="margin-top:16px">
-        <div><div class="big">+${r.xpGained} XP</div><div class="l" style="color:var(--dim);font-size:12px">${after.level > before.level ? `LEVEL UP → ${after.level}` : `LEVEL ${after.level}`}</div></div>
+        <div><div class="big">+${r.xpGained} XP</div><div class="l" style="color:var(--dim);font-size:12px">${after.level > before.level ? `RANK UP → ${after.level}` : `RANK ${after.level}`}</div></div>
         <div><div class="big">+${r.creditsGained}</div><div class="l" style="color:var(--dim);font-size:12px">CREDITS</div></div>
         <div style="flex:1"><div class="xpbar"><i id="res-xp" style="width:${after.level > before.level ? 0 : (before.into / before.needed) * 100}%" data-to="${(after.into / after.needed) * 100}"></i></div></div>
       </div>
@@ -479,6 +505,23 @@ export class UI {
         this.input.setBindings(this.save.data.settings.bindings);
         this.show('settings', false);
         break;
+      case 'hangar-select':
+        this.audio.play('uiMove');
+        this.hangarSel = el.dataset.id!;
+        this.show('hangar', false);
+        this.root.querySelector<HTMLElement>(`[data-action="hangar-select"][data-id="${this.hangarSel}"]`)?.focus();
+        break;
+      case 'equip': {
+        const id = el.dataset.id!;
+        if (isUnlocked(id, this.bestLevel())) {
+          this.save.data.profile.favoriteAircraft = id;
+          this.save.save();
+          this.audio.play('uiSelect');
+          this.show('hangar', false);
+          this.toast(`${AIRCRAFT[id].name} equipped.`);
+        }
+        break;
+      }
       case 'reset-tutorial':
         this.save.data.profile.tutorialDone = false;
         this.save.save();
@@ -532,8 +575,9 @@ export class UI {
       ctx.rotate(Math.sin(t * 0.7) * 0.08);
       // Slow barrel roll shows the airframe from both sides.
       const roll = Math.cos(t * 0.9);
-      drawExhaust(ctx, 'viper', PALETTES.blue, 1, Math.sin(t * 0.5) > 0.3, t, false);
-      drawAirframe(ctx, 'viper', PALETTES.blue, { roll, flash: 0, missiles: true, damage: 0 });
+      const art = (AIRCRAFT[this.hangarSel] ?? AIRCRAFT.viper).art;
+      drawExhaust(ctx, art, PALETTES.blue, 1, Math.sin(t * 0.5) > 0.3, t, false);
+      drawAirframe(ctx, art, PALETTES.blue, { roll, flash: 0, missiles: true, damage: 0 });
       this.previewRaf = requestAnimationFrame(frame);
     };
     this.previewRaf = requestAnimationFrame(frame);

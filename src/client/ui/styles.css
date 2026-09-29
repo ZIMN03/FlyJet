@@ -104,8 +104,29 @@ button.mbtn.primary { background: linear-gradient(90deg, rgba(40, 150, 200, 0.75
 /* ---------- Hangar ---------- */
 .hangar { display: grid; grid-template-columns: 220px 1fr; gap: 18px; }
 .ac-list { display: flex; flex-direction: column; gap: 6px; }
-.ac-item { padding: 10px 12px; border-radius: 8px; background: rgba(255,255,255,0.04); border: 1px solid transparent; font-size: 14px; }
-.ac-item.sel { border-color: var(--accent); background: rgba(54, 216, 255, 0.1); }
+.ac-item {
+  display: block; width: 100%; text-align: left; padding: 10px 12px; border-radius: 8px; cursor: pointer;
+  background: rgba(255,255,255,0.04); border: 1px solid transparent; font: 600 14px var(--font); color: var(--text); outline: none;
+  transition: background 120ms, border-color 120ms;
+}
+.ac-item:hover, .ac-item:focus-visible { background: rgba(54, 216, 255, 0.08); border-color: var(--edge); }
+.ac-item.sel { border-color: var(--accent); background: rgba(54, 216, 255, 0.12); }
+.ac-item.locked .ac-name { color: var(--dim); }
+.ac-name { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ac-item .lock { width: 13px; height: 13px; color: var(--warn); flex: none; }
+.preview-wrap { position: relative; }
+.preview-wrap.is-locked::after {
+  content: "LOCKED"; position: absolute; top: 10px; right: 12px; font: 800 11px var(--font); letter-spacing: 0.2em;
+  color: var(--warn); padding: 4px 8px; border: 1px solid rgba(255,176,32,0.5); border-radius: 4px; background: rgba(40,24,4,0.6);
+}
+.preview-wrap.is-locked .preview { filter: saturate(0.35) brightness(0.8); }
+.hangar-title { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 6px 0 10px; }
+.hangar-title .equip { width: auto; padding: 10px 22px; }
+.lock-note { margin: 0 0 12px; padding: 10px 12px; border-radius: 8px; font-size: 13px; line-height: 1.5;
+  background: rgba(255, 176, 32, 0.08); border: 1px solid rgba(255, 176, 32, 0.35); color: var(--text); }
+.lock-note span { display: block; color: var(--dim); margin-top: 2px; }
+.unlock-banner { margin: 0 0 12px; padding: 10px 14px; border-radius: 8px; font-size: 14px;
+  background: rgba(93, 255, 168, 0.1); border: 1px solid rgba(93, 255, 168, 0.4); }
 .ac-item .cls { font-size: 11px; color: var(--dim); letter-spacing: 0.12em; text-transform: uppercase; }
 .preview { width: 100%; height: 190px; border-radius: 10px; background: radial-gradient(ellipse at center, rgba(54,216,255,0.12), rgba(0,0,0,0) 70%); }
 .stat { display: grid; grid-template-columns: 120px 1fr 44px; gap: 10px; align-items: center; font-size: 12px; color: var(--dim); padding: 3px 0; letter-spacing: 0.08em; }

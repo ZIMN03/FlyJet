@@ -142,7 +142,131 @@ const scythe: Airframe = {
   },
 };
 
-const AIRFRAMES: Record<AircraftArtId, Airframe> = { viper, scythe };
+// ---- SR-2 Swift: tiny needle-nosed dart, sharply swept wing, single fin ----
+const SWIFT_BODY: Poly = [36, 0.5, 22, -2.5, 8, -4, -14, -4.5, -26, -3.5, -30, -1, -30, 3, -20, 4, 4, 4, 20, 2.5];
+const SWIFT_BELLY: Poly = [36, 0.5, 20, 2.5, 4, 4, -20, 4, -30, 3, -30, 1, 0, 1.5];
+const SWIFT_CANOPY: Poly = [18, -2.5, 12, -7, 4, -7.5, -1, -4.5];
+const SWIFT_FIN: Poly = [-15, -4.5, -27, -15, -32, -15, -28, -3.5];
+const SWIFT_FIN_STRIPE: Poly = [-22, -11, -29.5, -11, -30, -9, -20, -9];
+const SWIFT_WING: Poly = [4, 1.5, -18, 8.5, -25, 8.5, -12, 1.5];
+const SWIFT_STRIPE: Poly = [30, -0.2, -18, -2.2, -18, -0.7, 30, 1];
+
+const swift: Airframe = {
+  nozzleX: -30,
+  nozzleHalf: 2.6,
+  length: 66,
+  draw(ctx, p, missiles) {
+    poly(ctx, SWIFT_FIN, p.body);
+    poly(ctx, SWIFT_FIN_STRIPE, p.accent);
+    poly(ctx, SWIFT_BODY, p.body);
+    poly(ctx, SWIFT_BELLY, p.bodyDark);
+    poly(ctx, SWIFT_STRIPE, p.accent);
+    poly(ctx, SWIFT_CANOPY, p.canopy);
+    poly(ctx, SWIFT_WING, p.wing);
+    if (missiles) poly(ctx, [6, 5.5, -8, 5.5, -9, 7.2, 6, 7.2], '#e8ecef');
+    ctx.fillStyle = p.nozzle;
+    ctx.fillRect(-33, -2.6, 3.5, 5.2);
+  },
+};
+
+// ---- HG-9 Titan: bulky twin-engine gunship, twin tails, big wing -------------
+const TITAN_BODY: Poly = [38, 2, 30, -5, 16, -9, -10, -10, -30, -9, -40, -6, -40, 7, -30, 9, 10, 9, 28, 6];
+const TITAN_BELLY: Poly = [38, 2, 28, 6, 10, 9, -30, 9, -40, 7, -40, 2, 0, 3.5];
+const TITAN_CANOPY: Poly = [22, -7, 16, -13, 6, -14, 0, -9.5];
+const TITAN_FIN_BACK: Poly = [-24, -9.5, -31, -21, -38, -21, -40, -6];
+const TITAN_FIN: Poly = [-17, -10, -25, -24, -33, -24, -35, -9];
+const TITAN_FIN_STRIPE: Poly = [-22.5, -19.5, -31.5, -19.5, -32, -16.5, -21, -16.5];
+const TITAN_WING: Poly = [12, 3, -8, 14.5, -27, 14.5, -24, 3];
+const TITAN_INTAKE: Poly = [20, 1, 8, 6.5, -6, 6.5, -4, 1];
+const TITAN_STRIPE: Poly = [30, -3, -20, -6.5, -20, -4.5, 30, -1];
+
+const titan: Airframe = {
+  nozzleX: -40,
+  nozzleHalf: 6,
+  length: 86,
+  draw(ctx, p, missiles) {
+    poly(ctx, TITAN_FIN_BACK, p.bodyDark);
+    poly(ctx, TITAN_FIN, p.body);
+    poly(ctx, TITAN_FIN_STRIPE, p.accent);
+    poly(ctx, TITAN_BODY, p.body);
+    poly(ctx, TITAN_BELLY, p.bodyDark);
+    poly(ctx, TITAN_INTAKE, '#16181c');
+    poly(ctx, TITAN_STRIPE, p.accent);
+    poly(ctx, TITAN_CANOPY, p.canopy);
+    poly(ctx, TITAN_WING, p.wing);
+    if (missiles) {
+      poly(ctx, [10, 11, -10, 11, -12, 13.5, 10, 13.5], '#e8ecef');
+      poly(ctx, [2, 15, -18, 15, -20, 17.5, 2, 17.5], '#e8ecef');
+    }
+    ctx.fillStyle = p.nozzle;
+    ctx.fillRect(-44, -6, 4.5, 5);
+    ctx.fillRect(-44, 1.5, 4.5, 5);
+  },
+};
+
+// ---- NX-4 Phantom: faceted stealth wedge, sawtooth wing, slit exhaust -------
+const PHANTOM_BODY: Poly = [38, 1, 18, -5, -6, -8, -30, -6, -36, -2, -36, 4, -24, 6, 0, 6, 22, 3];
+const PHANTOM_BELLY: Poly = [38, 1, 22, 3, 0, 6, -24, 6, -36, 4, -36, 1.5, 0, 2];
+const PHANTOM_CANOPY: Poly = [16, -4.5, 8, -8.6, -2, -8.6, -6, -7];
+const PHANTOM_FIN: Poly = [-17, -7, -28, -17, -34, -17, -32, -5];
+const PHANTOM_WING: Poly = [10, 2, -12, 11, -18, 9, -24, 11, -27, 8, -14, 2];
+const PHANTOM_EDGE: Poly = [32, 0, -22, -3.4, -22, -2.4, 32, 0.9];
+
+const phantom: Airframe = {
+  nozzleX: -36,
+  nozzleHalf: 1.8,
+  length: 76,
+  draw(ctx, p, missiles) {
+    poly(ctx, PHANTOM_FIN, p.bodyDark);
+    poly(ctx, PHANTOM_BODY, p.bodyDark);
+    poly(ctx, PHANTOM_BELLY, p.nozzle);
+    poly(ctx, PHANTOM_EDGE, p.accent);
+    poly(ctx, PHANTOM_CANOPY, p.canopy);
+    poly(ctx, PHANTOM_WING, p.wing);
+    // Internal weapons bay: no external missiles break the silhouette.
+    void missiles;
+    ctx.fillStyle = p.nozzle;
+    ctx.fillRect(-39, -1.8, 3, 3.6);
+  },
+};
+
+// ---- XE-1 Nova: experimental airframe with a glowing energy core --------------
+const NOVA_BODY: Poly = [36, 0, 26, -5, 10, -7, -8, -7, -24, -5, -32, -2, -32, 3, -22, 6, -6, 7, 12, 6, 26, 4];
+const NOVA_BELLY: Poly = [36, 0, 26, 4, 12, 6, -6, 7, -22, 6, -32, 3, -32, 1, 0, 2];
+const NOVA_CANOPY: Poly = [20, -5, 12, -10, 2, -10, -2, -7];
+const NOVA_FIN: Poly = [-12, -7, -18, -18, -26, -18, -28, -4];
+const NOVA_WING: Poly = [6, 3, -20, 13, -28, 13, -22, 3];
+const NOVA_RAIL: Poly = [28, -1.6, -12, -3.6, -12, -2.3, 28, -0.2];
+const NOVA_CANARD: Poly = [24, -2, 17, -6.5, 14, -6.5, 17, -2];
+
+const nova: Airframe = {
+  nozzleX: -32,
+  nozzleHalf: 2.8,
+  length: 72,
+  draw(ctx, p, missiles) {
+    poly(ctx, NOVA_FIN, p.body);
+    poly(ctx, NOVA_BODY, p.body);
+    poly(ctx, NOVA_BELLY, p.bodyDark);
+    poly(ctx, NOVA_RAIL, p.accent);
+    poly(ctx, NOVA_CANOPY, p.canopy);
+    poly(ctx, NOVA_CANARD, p.bodyDark);
+    poly(ctx, NOVA_WING, p.wing);
+    // Energy core.
+    ctx.fillStyle = p.accent;
+    ctx.beginPath();
+    ctx.arc(-7, 1.5, 3.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = p.flameCore;
+    ctx.beginPath();
+    ctx.arc(-7, 1.5, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+    if (missiles) poly(ctx, [4, 9, -12, 9, -13, 10.8, 4, 10.8], '#e8ecef');
+    ctx.fillStyle = p.nozzle;
+    ctx.fillRect(-35, -2.8, 3.5, 5.6);
+  },
+};
+
+const AIRFRAMES: Record<AircraftArtId, Airframe> = { viper, scythe, swift, titan, phantom, nova };
 
 export interface DrawOptions {
   /** -1..1 visual roll; the sign keeps the canopy on top. */

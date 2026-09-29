@@ -3,7 +3,7 @@
  * gameplay systems read from these objects and never hard-code per-aircraft values.
  */
 
-export type AircraftArtId = 'viper' | 'scythe';
+export type AircraftArtId = 'viper' | 'scythe' | 'swift' | 'titan' | 'phantom' | 'nova';
 
 export interface AircraftDef {
   id: string;
@@ -11,6 +11,8 @@ export interface AircraftDef {
   className: string;
   description: string;
   art: AircraftArtId;
+  /** Endless Skies level the player must reach to fly this aircraft (0 = enemy-only). */
+  unlockLevel: number;
   /** Collision radius (circle). */
   radius: number;
 
@@ -65,13 +67,38 @@ export interface AircraftDef {
   ability: string;
 }
 
+/** Shared baseline for player airframes; each aircraft overrides what makes it distinct. */
+const PLAYER_BASE = {
+  brakeTurnBonus: 1.35,
+  boostTurnPenalty: 0.78,
+  grip: 5.5,
+  armor: 0,
+  afterburnerCapacity: 100,
+  afterburnerDrain: 32,
+  afterburnerRegen: 22,
+  afterburnerRegenDelay: 0.8,
+  afterburnerMinStart: 12,
+  gun: 'pulseCannon',
+  missile: 'lanceMissile',
+  missileRearmTime: 14,
+  missileCooldown: 0.6,
+  lockRange: 1500,
+  lockCone: 0.42,
+  lockTime: 0.85,
+  lockSignature: 1,
+  flareCharges: 3,
+  flareRechargeTime: 9,
+};
+
 export const AIRCRAFT: Record<string, AircraftDef> = {
   viper: {
+    ...PLAYER_BASE,
     id: 'viper',
     name: 'VX-7 Viper',
     className: 'Balanced Fighter',
     description: 'Dependable all-rounder with twin pulse cannons and an overcharge core.',
     art: 'viper',
+    unlockLevel: 1,
     radius: 24,
     cruiseSpeed: 430,
     maxSpeed: 560,
@@ -80,28 +107,107 @@ export const AIRCRAFT: Record<string, AircraftDef> = {
     acceleration: 420,
     deceleration: 520,
     turnRate: 3.3,
-    brakeTurnBonus: 1.35,
-    boostTurnPenalty: 0.78,
-    grip: 5.5,
     health: 100,
-    armor: 0,
-    afterburnerCapacity: 100,
-    afterburnerDrain: 32,
-    afterburnerRegen: 22,
-    afterburnerRegenDelay: 0.8,
-    afterburnerMinStart: 12,
-    gun: 'pulseCannon',
-    missile: 'lanceMissile',
     missileCapacity: 6,
-    missileRearmTime: 14,
-    missileCooldown: 0.6,
-    lockRange: 1500,
-    lockCone: 0.42,
-    lockTime: 0.85,
-    lockSignature: 1,
-    flareCharges: 3,
-    flareRechargeTime: 9,
     ability: 'overcharge',
+  },
+  swift: {
+    ...PLAYER_BASE,
+    id: 'swift',
+    name: 'SR-2 Swift',
+    className: 'Speed Fighter',
+    description: 'Tiny, blisteringly fast and very agile, but it cannot take many hits.',
+    art: 'swift',
+    unlockLevel: 3,
+    radius: 21,
+    cruiseSpeed: 480,
+    maxSpeed: 620,
+    minSpeed: 250,
+    boostSpeed: 900,
+    acceleration: 520,
+    deceleration: 560,
+    turnRate: 3.8,
+    grip: 6,
+    health: 75,
+    afterburnerCapacity: 110,
+    afterburnerDrain: 30,
+    afterburnerRegen: 26,
+    missileCapacity: 4,
+    lockRange: 1400,
+    lockTime: 0.8,
+    ability: 'speedBurst',
+  },
+  titan: {
+    ...PLAYER_BASE,
+    id: 'titan',
+    name: 'HG-9 Titan',
+    className: 'Heavy Fighter',
+    description: 'Armoured gunship with heavy cannons and a deep missile rack. Slow to turn.',
+    art: 'titan',
+    unlockLevel: 5,
+    radius: 27,
+    cruiseSpeed: 380,
+    maxSpeed: 500,
+    minSpeed: 210,
+    boostSpeed: 700,
+    acceleration: 340,
+    deceleration: 460,
+    turnRate: 2.7,
+    grip: 5,
+    health: 160,
+    armor: 0.1,
+    afterburnerDrain: 34,
+    afterburnerRegen: 20,
+    gun: 'heavyCannon',
+    missileCapacity: 8,
+    missileRearmTime: 12,
+    lockRange: 1600,
+    lockTime: 0.9,
+    lockSignature: 1.1,
+    ability: 'armor',
+  },
+  phantom: {
+    ...PLAYER_BASE,
+    id: 'phantom',
+    name: 'NX-4 Phantom',
+    className: 'Stealth Fighter',
+    description: 'Hard to lock onto and very manoeuvrable. Can vanish from radar entirely.',
+    art: 'phantom',
+    unlockLevel: 7,
+    radius: 23,
+    cruiseSpeed: 440,
+    maxSpeed: 570,
+    minSpeed: 230,
+    boostSpeed: 820,
+    acceleration: 440,
+    deceleration: 520,
+    turnRate: 3.6,
+    health: 85,
+    missileCapacity: 6,
+    lockTime: 0.8,
+    lockSignature: 0.55,
+    ability: 'stealth',
+  },
+  nova: {
+    ...PLAYER_BASE,
+    id: 'nova',
+    name: 'XE-1 Nova',
+    className: 'Experimental',
+    description: 'Prototype energy fighter: a hard-hitting plasma lance and a shockwave pulse.',
+    art: 'nova',
+    unlockLevel: 10,
+    radius: 23,
+    cruiseSpeed: 450,
+    maxSpeed: 580,
+    minSpeed: 230,
+    boostSpeed: 830,
+    acceleration: 460,
+    deceleration: 520,
+    turnRate: 3.4,
+    health: 95,
+    gun: 'plasmaLance',
+    missileCapacity: 5,
+    ability: 'energyPulse',
   },
   scythe: {
     id: 'scythe',
@@ -109,6 +215,7 @@ export const AIRCRAFT: Record<string, AircraftDef> = {
     className: 'Interceptor',
     description: 'Forward-swept hostile interceptor. Nimble, lightly armoured.',
     art: 'scythe',
+    unlockLevel: 0,
     radius: 23,
     cruiseSpeed: 400,
     maxSpeed: 520,
@@ -141,6 +248,15 @@ export const AIRCRAFT: Record<string, AircraftDef> = {
     ability: 'speedBurst',
   },
 };
+
+/** Aircraft the player can fly, in hangar order. */
+export const PLAYER_AIRCRAFT = ['viper', 'swift', 'titan', 'phantom', 'nova'] as const;
+
+/** `bestLevel` is the highest Endless Skies level the player has reached. */
+export function isUnlocked(id: string, bestLevel: number): boolean {
+  const def = AIRCRAFT[id];
+  return !!def && def.unlockLevel > 0 && Math.max(1, bestLevel) >= def.unlockLevel;
+}
 
 export function getAircraftDef(id: string): AircraftDef {
   const def = AIRCRAFT[id];

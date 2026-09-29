@@ -19,6 +19,8 @@ const TERRAIN_PROBES = [0.25, 0.55, 0.9];
 const TERRAIN_SAFE_CLEARANCE = 150;
 const CEILING_SAFE = 260;
 const EDGE_SAFE = 450;
+/** Stealthed enemies are only noticed within this distance. */
+const STEALTH_VISIBLE_RANGE = 450;
 /** Cone in which the AI will pull the trigger (radians, before skill scaling). */
 const FIRE_CONE = 0.1;
 
@@ -266,6 +268,8 @@ export class AiBrain {
     let bestD = DETECT_RANGE;
     for (const o of world.aircraft) {
       if (!o.alive || o.id === self.id || !world.areEnemies(self, o)) continue;
+      // A stealthed aircraft is only visible up close.
+      if (o.abilityTimer > 0 && o.ability.kind === 'stealth' && dist(self, o) > STEALTH_VISIBLE_RANGE) continue;
       // Slight preference to stick with the current target to avoid dithering.
       const d = dist(self, o) * (o.id === this.targetId ? 0.75 : 1);
       if (d < bestD) {

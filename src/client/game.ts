@@ -6,6 +6,7 @@ import { FxDirector } from './render/fx';
 import type { HudView } from './render/hud';
 import { Renderer } from './render/renderer';
 import { SaveStore } from './save/save';
+import { AIRCRAFT, PLAYER_AIRCRAFT, isUnlocked } from '../sim/config/aircraft';
 import { AttractSession, WaveSession, type MatchSession } from './session';
 import { TutorialTracker } from './tutorial';
 import { UI, type ResultsData, type UiAction } from './ui/ui';
@@ -43,6 +44,8 @@ export class Game {
   private tip = '';
   private readonly flareBtn: HTMLButtonElement;
   private flareBtnState = '';
+  /** Aircraft unlocked during the current match (shown on the results screen). */
+  private unlockedThisMatch: string[] = [];
 
   constructor(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     this.input = new InputManager(this.save.data.settings.bindings);
@@ -162,8 +165,10 @@ export class Game {
 
   private startMatch(): void {
     const p = this.save.data.profile;
-    // Only the Viper is flyable in this milestone; the hangar will drive this later.
-    this.session = new WaveSession({ aircraft: 'viper', callsign: p.callsign, lives: PLAYER_LIVES });
+    // Fly the equipped aircraft if it is unlocked; otherwise fall back to the Viper.
+    const aircraft = isUnlocked(p.favoriteAircraft, p.stats.bestWave) ? p.favoriteAircraft : 'viper';
+    this.session = new WaveSession({ aircraft, callsign: p.callsign, lives: PLAYER_LIVES });
+    this.unlockedThisMatch = [];
     this.fx.reset();
     this.fx.localId = this.session.localId;
     this.renderer.hud.reset();
@@ -237,7 +242,7 @@ export class Game {
     this.save.save();
     return {
       title: completed ? 'MISSION REPORT' : 'SORTIE ABORTED',
-      subtitle: `Endless Skies · Azure Coast · Wave ${wave}`,
+      subtitle: `Endless Skies · Azure Coast · Level ${wave}`,
       score: st.score,
       wave,
       kills: st.kills,
@@ -253,6 +258,7 @@ export class Game {
       xpBefore,
       xpAfter: prof.xp,
       newBest,
+      unlocked: this.unlockedThisMatch.slice(),
     };
   }
 
@@ -324,6 +330,7 @@ export class Game {
         this.save.save();
       }
       this.updateMatchAudio(session, dt);
+      this.trackLevelProgress(session);
       const mode = session.mode;
       if (mode && mode.phase === 'ended' && !this.resultsShown) {
         this.resultsShown = true;
@@ -383,6 +390,27 @@ export class Game {
       if (me.timeSinceDamaged < 3) combat = true;
     }
     this.music.target = combat ? MUSIC.combat : MUSIC.calm;
+  }
+
+  /**
+   * Save a new highest level the moment it is reached (so an unlock is never
+   * lost to a crash or quit) and announce any aircraft it unlocks.
+   */
+  private trackLevelProgress(session: MatchSession): void {
+    const level = session.mode?.wave ?? 0;
+    const stats = this.save.data.profile.stats;
+    if (level <= stats.bestWave) return;
+    const before = stats.bestWave;
+    stats.bestWave = level;
+    this.save.save();
+    for (const id of PLAYER_AIRCRAFT) {
+      const def = AIRCRAFT[id];
+      if (def.unlockLevel > Math.max(1, before) && def.unlockLevel <= level) {
+        this.unlockedThisMatch.push(def.name);
+        this.renderer.hud.banner('NEW AIRCRAFT UNLOCKED', `${def.name}. Equip it in the Hangar`, 3.2, 'good');
+        this.audio.play('waveClear');
+      }
+    }
   }
 
   /** Menu navigation via the input abstraction (keyboard arrows or gamepad). */

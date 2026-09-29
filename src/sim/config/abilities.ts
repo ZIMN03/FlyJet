@@ -1,4 +1,4 @@
-/** Special ability definitions. Behaviour is implemented in systems/abilities.ts by `kind`. */
+/** Special ability definitions. Behaviour is implemented in systems/weapons.ts by `kind`. */
 
 export type AbilityKind = 'overcharge' | 'speedBurst' | 'armor' | 'stealth' | 'energyPulse';
 
@@ -14,6 +14,9 @@ export interface AbilityDef {
   damageMult?: number;
   speedMult?: number;
   damageTakenMult?: number;
+  /** energyPulse: blast radius and damage; also destroys hostile missiles inside it. */
+  pulseRadius?: number;
+  pulseDamage?: number;
 }
 
 export const ABILITIES: Record<string, AbilityDef> = {
@@ -35,5 +38,32 @@ export const ABILITIES: Record<string, AbilityDef> = {
     duration: 1.6,
     cooldown: 14,
     speedMult: 1.45,
+  },
+  armor: {
+    id: 'armor',
+    kind: 'armor',
+    name: 'Bulwark',
+    description: 'Reinforced plating: take 60% less damage for a few seconds.',
+    duration: 4.5,
+    cooldown: 20,
+    damageTakenMult: 0.4,
+  },
+  stealth: {
+    id: 'stealth',
+    kind: 'stealth',
+    name: 'Ghost Veil',
+    description: 'Vanish from radar: breaks locks, cannot be locked, chasing missiles lose you.',
+    duration: 4,
+    cooldown: 20,
+  },
+  energyPulse: {
+    id: 'energyPulse',
+    kind: 'energyPulse',
+    name: 'Nova Pulse',
+    description: 'An energy shockwave that damages nearby enemies and destroys their missiles.',
+    duration: 0.4,
+    cooldown: 16,
+    pulseRadius: 300,
+    pulseDamage: 40,
   },
 };

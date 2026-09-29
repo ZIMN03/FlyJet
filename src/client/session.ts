@@ -114,7 +114,9 @@ export class AttractSession extends LocalSession {
     const roster = ['ace', 'tactical', 'aggressive'];
     for (let i = 0; i < 6; i++) {
       const blue = i % 2 === 0;
-      const a = this.world.addAircraft(blue ? 'viper' : 'scythe', blue ? TEAM_BLUE : TEAM_ORANGE, `AI ${i}`, false);
+      // Show off the player fleet in the menu backdrop.
+      const blueCraft = ['viper', 'swift', 'titan'][(i / 2) % 3];
+      const a = this.world.addAircraft(blue ? blueCraft : 'scythe', blue ? TEAM_BLUE : TEAM_ORANGE, `AI ${i}`, false);
       this.world.brains.set(a.id, new AiBrain(PERSONALITIES[roster[i % 3]], 0.7));
       const sp = this.world.map.spawns[i % this.world.map.spawns.length];
       spawnAircraft(this.world, a, sp.x, sp.y, sp.facing);

@@ -113,6 +113,9 @@ export class Renderer {
     const hp = a.health / a.def.health;
 
     ctx.save();
+    // Stealth: the Phantom fades out (still faintly visible so the pilot can see themselves).
+    const stealthed = a.abilityTimer > 0 && a.ability.kind === 'stealth';
+    if (stealthed) ctx.globalAlpha = fx.localId === a.id ? 0.35 : 0.12 + Math.abs(Math.sin(time * 9)) * 0.08;
     ctx.translate(x, y);
     ctx.rotate(h);
     ctx.scale(ART_SCALE, ART_SCALE);
@@ -125,6 +128,16 @@ export class Renderer {
     });
     ctx.restore();
 
+    if (a.abilityTimer > 0 && a.ability.kind === 'armor') {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = `rgba(150,220,255,${0.4 + Math.sin(time * 6) * 0.1})`;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(x, y, 50, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
     if (a.abilityTimer > 0 && a.ability.kind === 'overcharge') {
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';

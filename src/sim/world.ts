@@ -1,4 +1,4 @@
-import { getAircraftDef } from './config/aircraft';
+import { getAircraftDef, type AircraftDef } from './config/aircraft';
 import { ABILITIES } from './config/abilities';
 import { getMapDef, type MapDef } from './config/maps';
 import { GUNS, MISSILES } from './config/weapons';
@@ -72,9 +72,16 @@ export class World {
     return undefined;
   }
 
-  /** Create an aircraft (not yet spawned into the world). */
-  addAircraft(defId: string, team: number, name: string, isHuman: boolean, lives = -1): Aircraft {
-    const def = getAircraftDef(defId);
+  /**
+   * Create an aircraft (not yet spawned into the world).
+   * @param overrides per-instance stat tweaks (e.g. weaker early-level enemies)
+   *   layered on top of the shared aircraft definition.
+   */
+  addAircraft(
+    defId: string, team: number, name: string, isHuman: boolean, lives = -1, overrides?: Partial<AircraftDef>,
+  ): Aircraft {
+    const base = getAircraftDef(defId);
+    const def: AircraftDef = overrides ? { ...base, ...overrides } : base;
     const a: Aircraft = {
       id: this.nextId++,
       name,

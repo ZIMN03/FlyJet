@@ -203,18 +203,25 @@ export class FxDirector {
       case 'ability': {
         const a = world.getAircraft(e.id);
         if (a) {
-          this.ps.spawn(PK.Ring, a.x, a.y, 0, 0, 0.5, 20, 160, a.team === TEAM_BLUE ? C.cyan : C.orange, 0, 0, 1);
+          const pulse = a.ability.kind === 'energyPulse';
+          const col = a.team === TEAM_BLUE ? C.cyan : C.orange;
+          this.ps.spawn(PK.Ring, a.x, a.y, 0, 0, pulse ? 0.45 : 0.5, 20, pulse ? a.ability.pulseRadius ?? 300 : 160, col, 0, 0, 1);
+          if (pulse) {
+            this.ps.spawn(PK.Ring, a.x, a.y, 0, 0, 0.6, 10, (a.ability.pulseRadius ?? 300) * 0.7, C.white, 0, 0, 0.8);
+            this.ps.spawn(PK.Glow, a.x, a.y, 0, 0, 0.3, 60, 180, col, 0, 0, 0.7);
+            this.cam.addTrauma(e.id === local ? 0.3 : 0.1);
+          }
           this.sfx('ability', a.x, a.y);
           if (e.id === local) this.hud?.banner(a.ability.name.toUpperCase(), a.ability.description, 1.2, 'good');
         }
         break;
       }
       case 'waveStart':
-        this.hud?.banner(`WAVE ${e.wave}`, `${e.enemies} hostile${e.enemies > 1 ? 's' : ''} inbound`, 2.2, 'wave');
+        this.hud?.banner(`LEVEL ${e.wave}`, `${e.enemies} opponent${e.enemies > 1 ? 's' : ''} inbound`, 2.2, 'wave');
         this.sfx('waveStart');
         break;
       case 'waveClear':
-        this.hud?.banner('WAVE CLEARED', `+${e.bonus}  ·  Hull repaired  ·  Missiles restocked`, 2.4, 'good');
+        this.hud?.banner('LEVEL CLEARED', `+${e.bonus}  ·  Hull repaired  ·  Missiles restocked`, 2.4, 'good');
         this.sfx('waveClear');
         break;
       case 'matchEnd':

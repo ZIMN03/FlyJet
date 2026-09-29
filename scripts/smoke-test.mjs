@@ -59,6 +59,15 @@ try {
   await page.click('text=HANGAR');
   await wait(600);
   await shot('03-hangar');
+  // Any plane can be inspected; locked ones show stats plus the level needed.
+  await page.click('[data-action="hangar-select"][data-id="titan"]');
+  await wait(500);
+  const note = await page.textContent('.lock-note');
+  check(/level 5/i.test(note ?? ''), 'locked Titan shows "reach level 5" in the hangar');
+  check(await page.isVisible('text=CANNON DPS'), 'locked aircraft still shows its stats');
+  await shot('03b-hangar-locked');
+  await page.click('[data-action="hangar-select"][data-id="viper"]');
+  await wait(200);
   await page.keyboard.press('Escape');
   await wait(300);
   await page.click('text=SETTINGS');

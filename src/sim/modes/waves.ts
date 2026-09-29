@@ -1,5 +1,6 @@
 import { AiBrain } from '../ai/brain';
 import { PERSONALITIES } from '../ai/personalities';
+import { AIRCRAFT, type AircraftDef } from '../config/aircraft';
 import { COMBAT, SCORE, TEAM_ORANGE } from '../constants';
 import { clamp } from '../math';
 import { chooseSpawn, spawnAircraft } from '../systems/spawn';
@@ -14,7 +15,6 @@ export interface WaveConfig {
   endDelay: number;
   /** Health restored (fraction of max) on wave clear. */
   waveRepair: number;
-  maxSimultaneousEnemies: number;
 }
 
 export const DEFAULT_WAVE_CONFIG: WaveConfig = {
@@ -22,18 +22,61 @@ export const DEFAULT_WAVE_CONFIG: WaveConfig = {
   intermission: 3.5,
   endDelay: 2.8,
   waveRepair: 0.3,
-  maxSimultaneousEnemies: 6,
 };
 
-/** Personality mix per wave: early waves are forgiving, later waves bring aces. */
-const WAVE_ROSTER: string[][] = [
-  ['rookie'],
-  ['rookie', 'aggressive'],
-  ['aggressive', 'defensive'],
-  ['aggressive', 'tactical', 'rookie'],
-  ['tactical', 'defensive', 'aggressive'],
-  ['ace', 'aggressive', 'rookie', 'defensive'],
+/**
+ * Personality mix per level (index = level - 1; the last entry repeats).
+ * The opening levels are deliberately easy so new pilots get early wins.
+ */
+const LEVEL_ROSTER: string[][] = [
+  ['trainee'],
+  ['trainee'],
+  ['trainee'],
+  ['trainee', 'trainee', 'rookie'],
+  ['rookie', 'trainee'],
+  ['rookie', 'aggressive', 'trainee'],
+  ['aggressive', 'defensive', 'rookie'],
+  ['aggressive', 'tactical', 'defensive'],
+  ['tactical', 'aggressive', 'defensive', 'ace'],
+  ['ace', 'tactical', 'aggressive', 'defensive'],
 ];
+/** Level at which enemies reach full strength. */
+const FULL_STRENGTH_LEVEL = 10;
+/** Hard cap on enemies per level (performance / screen clarity). */
+const MAX_LEVEL_ENEMIES = 12;
+
+export interface LevelDifficulty {
+  enemies: number;
+  roster: string[];
+  /** 0..1 AI competence (aim, reaction time). */
+  skill: number;
+  /** Per-enemy stat changes on top of the base interceptor. */
+  overrides: Partial<AircraftDef>;
+}
+
+/**
+ * Difficulty curve. Level N sends N opponents. Early opponents are fragile,
+ * slower, turn wider, can't fire missiles and aim badly; everything ramps up
+ * until FULL_STRENGTH_LEVEL.
+ */
+export function levelDifficulty(level: number): LevelDifficulty {
+  const t = clamp((level - 1) / (FULL_STRENGTH_LEVEL - 1), 0, 1);
+  const base = AIRCRAFT.scythe;
+  return {
+    enemies: clamp(level, 1, MAX_LEVEL_ENEMIES),
+    roster: LEVEL_ROSTER[Math.min(level - 1, LEVEL_ROSTER.length - 1)],
+    skill: clamp(0.1 + (level - 1) * 0.09, 0.1, 1),
+    overrides: {
+      health: Math.round(base.health * (0.4 + 0.6 * t)),
+      turnRate: base.turnRate * (0.7 + 0.3 * t),
+      cruiseSpeed: base.cruiseSpeed * (0.82 + 0.18 * t),
+      maxSpeed: base.maxSpeed * (0.85 + 0.15 * t),
+      boostSpeed: base.boostSpeed * (0.85 + 0.15 * t),
+      missileCapacity: level <= 2 ? 0 : level <= 4 ? 1 : base.missileCapacity,
+      flareCharges: level <= 2 ? 0 : level <= 5 ? 1 : base.flareCharges,
+    },
+  };
+}
 
 const ENEMY_SPAWN_MIN_DIST = 2000;
 const ENEMY_SPAWN_MAX_DIST = 2900;
@@ -158,23 +201,18 @@ export class WaveMode implements GameMode {
     }
   }
 
-  /** Wave n (1-based) enemy count: 1,2,2,3,3,4,4,... capped. */
-  static enemyCount(wave: number, cap: number): number {
-    return clamp(1 + Math.floor(wave / 2), 1, cap);
-  }
-
+  /** Start the next level (`wave` is the current level number, 1-based). */
   private startWave(world: World): void {
     this.wave++;
     this.phase = 'playing';
     this.phaseTimer = 0;
-    const count = WaveMode.enemyCount(this.wave, this.config.maxSimultaneousEnemies);
-    const roster = WAVE_ROSTER[Math.min(this.wave - 1, WAVE_ROSTER.length - 1)];
-    const skill = clamp(0.3 + this.wave * 0.07, 0.3, 1);
+    const diff = levelDifficulty(this.wave);
+    const count = diff.enemies;
     const anchor = this.playerAnchor(world);
     for (let i = 0; i < count; i++) {
-      const pers = PERSONALITIES[roster[i % roster.length]];
-      const e = world.addAircraft('scythe', TEAM_ORANGE, `${pers.label} ${++this.enemySerial}`, false, 1);
-      world.brains.set(e.id, new AiBrain(pers, skill));
+      const pers = PERSONALITIES[diff.roster[i % diff.roster.length]];
+      const e = world.addAircraft('scythe', TEAM_ORANGE, `${pers.label} ${++this.enemySerial}`, false, 1, diff.overrides);
+      world.brains.set(e.id, new AiBrain(pers, diff.skill));
       const side = i % 2 === 0 ? 1 : -1;
       let x = anchor.x + side * world.rng.range(ENEMY_SPAWN_MIN_DIST, ENEMY_SPAWN_MAX_DIST);
       if (x < 700 || x > world.map.width - 700) x = anchor.x - side * world.rng.range(ENEMY_SPAWN_MIN_DIST, ENEMY_SPAWN_MAX_DIST);

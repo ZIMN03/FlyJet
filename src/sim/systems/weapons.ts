@@ -1,6 +1,7 @@
 import { angleDiff } from '../math';
 import { Button, LockState, type Aircraft, type InputCommand } from '../types';
 import type { World } from '../world';
+import { applyDamage } from './damage';
 
 /** Number of flare pellets per deployment. */
 const FLARES_PER_DEPLOY = 4;
@@ -91,6 +92,38 @@ export function updateWeapons(world: World, a: Aircraft, cmd: InputCommand, dt: 
     a.abilityTimer = a.ability.duration;
     a.abilityCooldown = a.ability.cooldown;
     world.emit({ type: 'ability', id: a.id, ability: a.ability.id });
+    activateAbility(world, a);
+  }
+  // Stealth: nobody can build a lock while the veil is up.
+  if (a.abilityTimer > 0 && a.ability.kind === 'stealth') a.lockImmunity = Math.max(a.lockImmunity, 0.1);
+}
+
+/** One-off effects when an ability fires. Duration-based effects are read where they apply. */
+function activateAbility(world: World, a: Aircraft): void {
+  const ab = a.ability;
+  if (ab.kind === 'stealth') {
+    for (const o of world.aircraft) {
+      if (o.lockTargetId === a.id) {
+        o.lockProgress = 0;
+        o.lockState = LockState.Detected;
+      }
+    }
+    // Chasing missiles lose the target and fly on blind until their chase timer runs out.
+    for (const m of world.missiles) if (m.active && m.targetId === a.id) m.targetId = 0;
+  } else if (ab.kind === 'energyPulse') {
+    const r = ab.pulseRadius ?? 0;
+    for (const o of world.aircraft) {
+      if (!o.alive || o.id === a.id || !world.areEnemies(a, o)) continue;
+      const d = Math.hypot(o.x - a.x, o.y - a.y);
+      if (d <= r + o.def.radius) applyDamage(world, o, ab.pulseDamage ?? 0, a.id, 'gun');
+    }
+    for (const m of world.missiles) {
+      if (!m.active || m.team === a.team) continue;
+      if (Math.hypot(m.x - a.x, m.y - a.y) <= r) {
+        m.active = false;
+        world.emit({ type: 'missileExplode', missileId: m.id, x: m.x, y: m.y, radius: 0, water: false });
+      }
+    }
   }
 }
 

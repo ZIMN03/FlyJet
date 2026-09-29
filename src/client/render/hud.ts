@@ -518,7 +518,7 @@ export class Hud {
     if (m && m.wave > 0) {
       ctx.font = this.font(14 * u, 700);
       ctx.fillStyle = COL.text;
-      ctx.fillText(`WAVE ${m.wave}  ·  ${m.enemiesRemaining} HOSTILE${m.enemiesRemaining === 1 ? '' : 'S'}`, x, y);
+      ctx.fillText(`LEVEL ${m.wave}  ·  ${m.enemiesRemaining} HOSTILE${m.enemiesRemaining === 1 ? '' : 'S'} LEFT`, x, y);
       y += 22 * u;
     }
     if (me && me.lives > 0) {
@@ -698,7 +698,7 @@ export class Hud {
     }
     if (m && m.phase === 'intermission') {
       ctx.font = this.font(15 * u, 700);
-      this.text(ctx, `Next wave in ${Math.ceil(m.phaseTimer)}`, W / 2, H * 0.33, COL.text, u);
+      this.text(ctx, `Level ${m.wave + 1} in ${Math.ceil(m.phaseTimer)}`, W / 2, H * 0.33, COL.text, u);
     }
     if (me && !me.alive && (!m || (m.phase !== 'ending' && m.phase !== 'ended'))) {
       ctx.font = this.font(34 * u, 900);

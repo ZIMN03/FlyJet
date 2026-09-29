@@ -34,6 +34,13 @@ export interface Personality {
 }
 
 export const PERSONALITIES: Record<string, Personality> = {
+  /** Opening levels: meant to be beaten. Wobbly aim, slow reactions, no tricks. */
+  trainee: {
+    id: 'trainee', label: 'Trainee',
+    engageRange: 1600, preferredRange: 700, minRange: 300,
+    aimError: 0.3, reactionTime: 0.75, missileRate: 0, strategicMissiles: false,
+    flareSkill: 0, evadeTendency: 0.08, retreatHealth: 0, boostUse: 0.1, flankBias: 0, brakeTurns: false,
+  },
   rookie: {
     id: 'rookie', label: 'Rookie',
     engageRange: 1900, preferredRange: 650, minRange: 280,
